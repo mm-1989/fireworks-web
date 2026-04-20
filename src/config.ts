@@ -14,14 +14,21 @@ export const MAX_PIXEL_RATIO = 2;
 export const DT_MAX = 0.05; // フレーム遅延時の異常な速度倍加を防ぐ上限
 
 // ---- Post-processing (UnrealBloomPass) ----
-/** AdditiveBlending の輝度は簡単に 1 を超える。低くしないとほぼ何も拾わない */
-export const BLOOM_THRESHOLD = 0.1;
-/** ブルームの広がり半径 (画面比)。上げるほど滲みが太い */
-export const BLOOM_RADIUS = 0.85;
-/** Tier 別の bloom 強度。low は電力・発熱優先で控えめに */
-export const BLOOM_STRENGTH_LOW = 0.6;
-export const BLOOM_STRENGTH_MID = 0.9;
-export const BLOOM_STRENGTH_HIGH = 1.2;
+/**
+ * AdditiveBlending の輝度は簡単に 1 を超える。
+ * しきい値を低く (0.1 付近) すると残光まで全て拾って画面全体が白飛びし、
+ * 背景 residue が見えなくなるので少し上げ気味に。
+ */
+export const BLOOM_THRESHOLD = 0.45;
+/** ブルームの広がり半径 (0..1)。上げるほど滲みが太い */
+export const BLOOM_RADIUS = 0.55;
+/**
+ * Tier 別の bloom 強度。内部的に 3x 倍率がかかる (UnrealBloomPass 仕様) ので
+ * 体感の強さは 3 倍で考えるとよい。
+ */
+export const BLOOM_STRENGTH_LOW = 0.25;
+export const BLOOM_STRENGTH_MID = 0.4;
+export const BLOOM_STRENGTH_HIGH = 0.55;
 
 // ---- Charge (長押しチャージ) ----
 /** 1 段階あたりの保持時間 (ms)。10 段階で 1500ms = 最大溜め */
