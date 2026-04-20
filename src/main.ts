@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import "./style.css";
 import { createGlowTexture } from "./glowTexture";
+import { createEmojiTexture } from "./emojiTexture";
 import { SoundManager } from "./audio";
 import {
   type Burst,
+  type BurstTheme,
   type Rocket,
   createBurst,
   createRocket,
@@ -41,6 +43,69 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 const glowTexture = createGlowTexture();
 const sound = new SoundManager();
 
+// ==============================
+// テーマ定義
+// ==============================
+// 絵文字系: NormalBlending + uniform白 で絵文字の自然な色を保つ
+// ピンク系: AdditiveBlending + HSL で光る花火らしさ
+const pinkTheme: BurstTheme = {
+  texture: glowTexture,
+  particleCount: 600,
+  particleSize: 3.2, // 少し小さく
+  speedMin: 14,
+  speedMax: 32,
+  gravity: -12,
+  lifetime: 3.2,
+  blending: THREE.AdditiveBlending,
+  coloring: {
+    mode: "hsl",
+    hueMin: 0.92,
+    hueMax: 0.96,
+    sparkleChance: 0.08,
+  },
+  rocketColor: 0xff66cc,
+};
+
+function emojiTheme(emoji: string, rocketColor: number): BurstTheme {
+  return {
+    texture: createEmojiTexture(emoji, 128),
+    particleCount: 90, // 絵文字は大きく描画するので少なめ
+    particleSize: 3.8, // 絵文字が読める程度の大きさ
+    speedMin: 10,
+    speedMax: 22,
+    gravity: -10,
+    lifetime: 3.0,
+    blending: THREE.NormalBlending,
+    coloring: { mode: "uniform", color: 0xffffff },
+    rocketColor,
+  };
+}
+
+const iceTheme = emojiTheme("🍦", 0xfff0b0);
+const friesTheme = emojiTheme("🍟", 0xffcc33);
+const strawberryTheme = emojiTheme("🍓", 0xff4466);
+const donutTheme = emojiTheme("🍩", 0xff99bb);
+
+// タップごとに重み付きランダムで選ぶ
+// 5% ピンク / 食べ物 各 ~23.75%
+const themePool: { theme: BurstTheme; weight: number }[] = [
+  { theme: pinkTheme, weight: 5 },
+  { theme: iceTheme, weight: 24 },
+  { theme: friesTheme, weight: 24 },
+  { theme: strawberryTheme, weight: 24 },
+  { theme: donutTheme, weight: 23 },
+];
+const totalWeight = themePool.reduce((s, t) => s + t.weight, 0);
+
+function pickTheme(): BurstTheme {
+  let r = Math.random() * totalWeight;
+  for (const entry of themePool) {
+    r -= entry.weight;
+    if (r <= 0) return entry.theme;
+  }
+  return themePool[0].theme;
+}
+
 const bursts: Burst[] = [];
 const rockets: Rocket[] = [];
 
@@ -52,22 +117,20 @@ const clock = new THREE.Clock();
 function animate() {
   // 注意: clock.getDelta() を先に呼ぶこと。getElapsedTime()は内部でgetDelta()を
   //       呼び時計を進めるため、先にElapsedを取ると後続のgetDelta()は≒0になる
-  const dt = Math.min(clock.getDelta(), 0.05); // タブ復帰時の巨大dt防止
+  const dt = Math.min(clock.getDelta(), 0.05);
   const now = clock.elapsedTime;
 
-  // Rocket更新: 到達したものはBurstに差し替え
   for (let i = rockets.length - 1; i >= 0; i--) {
     const r = rockets[i];
     if (updateRocket(r, scene, dt)) {
       bursts.push(
-        createBurst(scene, glowTexture, r.target.x, r.target.y, r.target.z, now),
+        createBurst(scene, r.burstTheme, r.target.x, r.target.y, r.target.z, now),
       );
       sound.playExplosion();
       rockets.splice(i, 1);
     }
   }
 
-  // Burst更新: 寿命切れは自動削除
   for (let i = bursts.length - 1; i >= 0; i--) {
     if (updateBurst(bursts[i], scene, dt, now)) {
       bursts.splice(i, 1);
@@ -97,14 +160,14 @@ function screenToWorld(clientX: number, clientY: number): THREE.Vector3 {
 canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
 
-  // iOSの音声制限を最初のタップで解除
   sound.ensureContext();
 
   const target = screenToWorld(e.clientX, e.clientY);
   const bottomY = screenToWorld(e.clientX, window.innerHeight).y - 3;
   const start = new THREE.Vector3(target.x, bottomY, target.z);
 
-  rockets.push(createRocket(scene, glowTexture, start, target));
+  const theme = pickTheme();
+  rockets.push(createRocket(scene, glowTexture, start, target, theme));
   sound.playLaunch();
 });
 
