@@ -10,6 +10,11 @@ import {
   CLEAR_FILL_THRESHOLD,
   DT_MAX,
   MAX_CONCURRENT_BURSTS,
+  SHOOTING_STARS_MAX_CONCURRENT,
+  SWIPE_SPEED_MAX_WORLD,
+  SWIPE_SPEED_MIN_WORLD,
+  SWIPE_STARS_MAX,
+  SWIPE_STARS_PER_PX,
 } from "./config";
 import { mountDebugBadge } from "./debugBadge";
 import { createGlowTexture } from "./glowTexture";
@@ -18,6 +23,12 @@ import { detectPerformanceTier } from "./performanceTier";
 import { createResidueLayer } from "./residue";
 import { createSceneContext } from "./scene";
 import { registerServiceWorker } from "./serviceWorker";
+import {
+  type ShootingStar,
+  createShootingStar,
+  disposeShootingStar,
+  updateShootingStar,
+} from "./shootingStar";
 import { type BurstTheme, createThemePicker } from "./themes";
 
 // ---- DOM ----
@@ -42,6 +53,7 @@ const chargeIndicator = createChargeIndicator();
 
 // ---- Game state ----
 const bursts: Burst[] = [];
+const shootingStars: ShootingStar[] = [];
 const clock = new THREE.Clock();
 let cleared = false;
 let secondsSinceLastCheck = 0;
@@ -54,8 +66,14 @@ function animate(): void {
   const now = clock.elapsedTime;
 
   for (let i = bursts.length - 1; i >= 0; i--) {
-    if (updateBurst(bursts[i], scene, dt, now, stampToResidue)) {
+    if (updateBurst(bursts[i], scene, dt, now, stampBurstToResidue)) {
       bursts.splice(i, 1);
+    }
+  }
+
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    if (updateShootingStar(shootingStars[i], scene, dt, now, stampPointToResidue)) {
+      shootingStars.splice(i, 1);
     }
   }
 
@@ -64,8 +82,16 @@ function animate(): void {
   requestAnimationFrame(animate);
 }
 
-function stampToResidue(burst: Burst): void {
+function stampBurstToResidue(burst: Burst): void {
   residue.stampBurst(burst);
+}
+
+function stampPointToResidue(
+  pos: THREE.Vector3,
+  color: THREE.Color,
+  size: number,
+): void {
+  residue.stampPoint(pos, color, size);
 }
 
 /**
@@ -84,12 +110,45 @@ function spawnBurst(
     if (oldest) {
       if (!oldest.stamped) {
         oldest.stamped = true;
-        stampToResidue(oldest);
+        stampBurstToResidue(oldest);
       }
       disposeBurst(oldest, scene);
     }
   }
   bursts.push(createBurst(scene, theme, x, y, z, now));
+}
+
+/** 流れ星 1 本を生成。上限超過時は最古を破棄 */
+function spawnShootingStar(
+  start: THREE.Vector3,
+  velocity: THREE.Vector3,
+  color: THREE.Color,
+  now: number,
+): void {
+  if (shootingStars.length >= SHOOTING_STARS_MAX_CONCURRENT) {
+    const oldest = shootingStars.shift();
+    if (oldest) disposeShootingStar(oldest, scene);
+  }
+  shootingStars.push(
+    createShootingStar(scene, glowTexture, start, velocity, color, now),
+  );
+}
+
+/** 現在のテーマ候補から 1 色サンプル (流れ星の色付け用) */
+function pickStarColor(): THREE.Color {
+  const theme = themePicker.pick();
+  const color = new THREE.Color();
+  if (theme.coloring.mode === "hsl") {
+    const range = theme.coloring.hueRanges[0];
+    color.setHSL(
+      range.hueMin + Math.random() * (range.hueMax - range.hueMin),
+      1.0,
+      0.75,
+    );
+  } else {
+    color.set(theme.coloring.color);
+  }
+  return color;
 }
 
 function maybeCheckClear(dt: number): void {
@@ -134,9 +193,31 @@ bindPointerGesture(sceneCanvas, camera, {
     spawnBurst(theme, target.x, target.y, target.z, clock.elapsedTime);
     sound.playExplosion();
   },
-  onPressCancel: () => {
+  onSwipeStart: () => {
     chargeIndicator.hide();
-    // Phase C でスワイプの流れ星処理をここから分岐予定
+  },
+  onSwipe: ({ startTarget, endTarget, direction, worldSpeedPerSec, distancePx }) => {
+    if (cleared) return;
+    const count = Math.max(
+      1,
+      Math.min(SWIPE_STARS_MAX, Math.round(distancePx * SWIPE_STARS_PER_PX)),
+    );
+    const speed = Math.max(
+      SWIPE_SPEED_MIN_WORLD,
+      Math.min(SWIPE_SPEED_MAX_WORLD, worldSpeedPerSec),
+    );
+    const now = clock.elapsedTime;
+    for (let i = 0; i < count; i++) {
+      const t = count === 1 ? 0.5 : i / (count - 1);
+      const start = new THREE.Vector3().lerpVectors(startTarget, endTarget, t);
+      // 進行方向に対して少しだけ直交方向にブレを入れる
+      const jitter = (Math.random() - 0.5) * 2.0;
+      start.x += -direction.y * jitter;
+      start.y += direction.x * jitter;
+      const velocity = direction.clone().multiplyScalar(speed);
+      spawnShootingStar(start, velocity, pickStarColor(), now);
+    }
+    sound.playExplosion();
   },
 });
 

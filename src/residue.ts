@@ -22,6 +22,15 @@ import {
 export interface ResidueLayer {
   /** burst の全粒子を現在位置で焼き付ける */
   stampBurst(burst: Burst): void;
+  /**
+   * 1 点を焼き付ける。shooting star の軌跡を毎フレーム残す用途で使う。
+   * `particleSize` は world 単位。camera 投影で画面 px 半径に換算される。
+   */
+  stampPoint(
+    worldPos: THREE.Vector3,
+    color: THREE.Color,
+    particleSize: number,
+  ): void;
   /** 埋まり率 0..1。mask 指定時は mask 内のみ対象 */
   computeFillRate(): number;
   /** マスク canvas を設定。null で全画面。マスクの alpha>128 を対象領域とする */
@@ -94,6 +103,36 @@ export function createResidueLayer(
     ctx.globalAlpha = 1;
   }
 
+  function stampPoint(
+    worldPos: THREE.Vector3,
+    color: THREE.Color,
+    particleSize: number,
+  ): void {
+    projected.copy(worldPos).project(camera);
+    if (projected.z < -1 || projected.z > 1) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    const x = (projected.x + 1) * 0.5 * width;
+    const y = (-projected.y + 1) * 0.5 * height;
+    const radius =
+      computeVisualRadiusPx(particleSize, camera, height) *
+      RESIDUE_RADIUS_SCALE;
+    const r = Math.round(color.r * 255);
+    const g = Math.round(color.g * 255);
+    const b = Math.round(color.b * 255);
+    const rgb = `${r},${g},${b}`;
+
+    ctx.globalAlpha = RESIDUE_ALPHA;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0.0, `rgba(${rgb},1)`);
+    grad.addColorStop(0.15, `rgba(${rgb},0.85)`);
+    grad.addColorStop(0.4, `rgba(${rgb},0.3)`);
+    grad.addColorStop(1.0, `rgba(${rgb},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    ctx.globalAlpha = 1;
+  }
+
   function computeFillRate(): number {
     sampleCtx.clearRect(0, 0, CLEAR_SAMPLE_SIZE, CLEAR_SAMPLE_SIZE);
     sampleCtx.drawImage(canvas, 0, 0, CLEAR_SAMPLE_SIZE, CLEAR_SAMPLE_SIZE);
@@ -145,7 +184,7 @@ export function createResidueLayer(
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  return { stampBurst, computeFillRate, setMask, clear };
+  return { stampBurst, stampPoint, computeFillRate, setMask, clear };
 }
 
 /**
