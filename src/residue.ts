@@ -75,7 +75,10 @@ export function createResidueLayer(
   function drawGlow(x: number, y: number, radius: number, rgb: string): void {
     ctx.save();
     ctx.translate(x, y);
-    // Core (従来プロファイル)
+    // 粒子ごとにランダムな角度で十字を傾ける。同じ方向に揃うと背景が縦横の
+    // 罫線みたいに見えるため、stamp ごとに完全に独立した角度でばらけさせる
+    ctx.rotate(Math.random() * Math.PI * 2);
+    // Core (従来プロファイル。回転しても放射対称なので見た目不変)
     const core = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
     core.addColorStop(0.0, `rgba(${rgb},1)`);
     core.addColorStop(0.15, `rgba(${rgb},0.85)`);

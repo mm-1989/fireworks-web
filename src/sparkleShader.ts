@@ -49,6 +49,32 @@ export function applySparklePatch(material: THREE.PointsMaterial): void {
         "void main() {",
         "uniform float uTime;\nvarying float vSeed;\nvoid main() {",
       )
+      // map_particle_fragment を差し替え、gl_PointCoord を粒子ごとの角度で回す。
+      // 角速度・方向を seed で散らすことで、粒子が各自のペースで自然に回る
+      // (= 慣性を感じるばらけ)。低周波 wobble を加えてわずかに揺らぎを与える。
+      // 回転後の UV が [0,1] を超えると clamp-to-edge で端 (alpha=0) を拾うが、
+      // glow テクスチャ自体が縁で透明なので穴は出ない。
+      .replace(
+        "#include <map_particle_fragment>",
+        `
+        float rotDir = (vSeed > 0.5) ? 1.0 : -1.0;
+        float rotSpeed = 0.4 + fract(vSeed * 13.37) * 0.9;
+        float wobble = 0.18 * sin(uTime * 0.35 + vSeed * 6.2831853);
+        float rotAngle = uTime * rotSpeed * rotDir + wobble + vSeed * 6.2831853;
+        float rc = cos(rotAngle);
+        float rs = sin(rotAngle);
+        vec2 rotCoord = mat2(rc, -rs, rs, rc) * (gl_PointCoord - 0.5) + 0.5;
+        #if defined( USE_MAP ) || defined( USE_ALPHAMAP )
+          vec2 uv = ( uvTransform * vec3( rotCoord.x, 1.0 - rotCoord.y, 1.0 ) ).xy;
+        #endif
+        #ifdef USE_MAP
+          diffuseColor *= texture2D( map, uv );
+        #endif
+        #ifdef USE_ALPHAMAP
+          diffuseColor.a *= texture2D( alphaMap, uv ).g;
+        #endif
+        `,
+      )
       .replace(
         "#include <opaque_fragment>",
         `
