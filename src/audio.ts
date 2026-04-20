@@ -4,13 +4,23 @@
  * iOS Safari制約: AudioContext はユーザ操作イベント内で初めて再生可能。
  * このため `ensureContext()` を最初のタップで呼ぶ必要がある。
  */
+
+// 古い Safari 用の prefixed AudioContext を型安全に取り出す
+interface WindowWithWebkitAudio extends Window {
+  readonly webkitAudioContext?: typeof AudioContext;
+}
+function getWebkitAudioContext(): typeof AudioContext | undefined {
+  return (window as WindowWithWebkitAudio).webkitAudioContext;
+}
+
 export class SoundManager {
   private ctx: AudioContext | null = null;
 
   /** 最初のユーザ操作で呼ぶこと。iOSの自動再生制限を解除する */
   ensureContext(): AudioContext {
     if (!this.ctx) {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const AC = window.AudioContext ?? getWebkitAudioContext();
+      if (!AC) throw new Error("AudioContext is not supported in this browser");
       this.ctx = new AC();
     }
     if (this.ctx.state === "suspended") {

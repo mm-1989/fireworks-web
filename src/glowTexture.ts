@@ -26,5 +26,7 @@ export function createGlowTexture(size = 128): THREE.CanvasTexture {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
+  // Three.js r152+ の既定レンダリング空間に合わせ、sRGB ソースとして扱う
+  texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }

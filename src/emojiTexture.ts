@@ -29,5 +29,7 @@ export function createEmojiTexture(
   // 絵文字の滑らかなフチを保つため線形フィルタ
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
+  // 絵文字の色味を正しく出すため sRGB として扱う
+  texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
