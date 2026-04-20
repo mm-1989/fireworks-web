@@ -25,11 +25,26 @@ body {
   overscroll-behavior: none;
 }
 
+/* residue (背景焼き付け) と scene (WebGL) を画面全体に重ねて配置 */
+#residue,
 #scene {
   display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
   /* iPhoneのノッチ/ホームインジケータ領域も塗りつぶす */
   width: 100dvw;
   height: 100dvh;
+}
+
+/* residue は背景専用。タップは scene で受ける */
+#residue {
+  z-index: 1;
+  pointer-events: none;
+}
+
+#scene {
+  z-index: 2;
 }

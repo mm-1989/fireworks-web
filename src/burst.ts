@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { STAMP_LIFE_RATIO } from "./config";
 import type { BurstTheme } from "./themes";
 
 /**
@@ -12,6 +13,8 @@ export interface Burst {
   gravity: number;
   lifetime: number;
   count: number;
+  /** 焼き付け済みフラグ。STAMP_LIFE_RATIO を跨いだ 1 フレームだけ true になる直前に検知 */
+  stamped: boolean;
 }
 
 export function createBurst(
@@ -53,23 +56,32 @@ export function createBurst(
     gravity: theme.gravity,
     lifetime: theme.lifetime,
     count,
+    stamped: false,
   };
 }
 
-/** @returns true なら寿命切れで削除済み */
+/**
+ * @param onStampReady burst の寿命比率が STAMP_LIFE_RATIO を跨いだフレームで 1 回だけ呼ばれる。
+ *                    残留レイヤへの焼き付けなどに使う
+ * @returns true なら寿命切れで削除済み
+ */
 export function updateBurst(
   burst: Burst,
   scene: THREE.Scene,
   dt: number,
   now: number,
+  onStampReady?: (burst: Burst) => void,
 ): boolean {
   const age = now - burst.born;
   const lifeRatio = age / burst.lifetime;
 
+  if (!burst.stamped && lifeRatio >= STAMP_LIFE_RATIO) {
+    burst.stamped = true;
+    onStampReady?.(burst);
+  }
+
   if (lifeRatio >= 1) {
-    scene.remove(burst.points);
-    burst.points.geometry.dispose();
-    (burst.points.material as THREE.Material).dispose();
+    disposeBurst(burst, scene);
     return true;
   }
 
@@ -89,6 +101,13 @@ export function updateBurst(
   const mat = burst.points.material as THREE.PointsMaterial;
   mat.opacity = Math.max(0, 1 - lifeRatio * lifeRatio);
   return false;
+}
+
+/** burst の GPU リソースを解放しシーンから取り除く */
+export function disposeBurst(burst: Burst, scene: THREE.Scene): void {
+  scene.remove(burst.points);
+  burst.points.geometry.dispose();
+  (burst.points.material as THREE.Material).dispose();
 }
 
 function fillInitialState(

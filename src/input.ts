@@ -3,8 +3,6 @@ import * as THREE from "three";
 export interface WorldPointerEvent {
   /** タップされた画面座標を z=0 平面に投影したワールド座標 */
   target: THREE.Vector3;
-  /** 画面下端より少し下 (発射元) のワールド座標 */
-  launchFloor: THREE.Vector3;
 }
 
 /**
@@ -35,7 +33,6 @@ export function bindPointerLaunch(
 ): void {
   canvas.addEventListener("pointerdown", (e) => {
     const target = screenToWorld(camera, e.clientX, e.clientY);
-    const launchFloor = screenToWorld(camera, e.clientX, window.innerHeight);
-    handler({ target, launchFloor });
+    handler({ target });
   });
 }

@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  BACKGROUND_COLOR,
   CAMERA_FAR,
   CAMERA_FOV,
   CAMERA_NEAR,
@@ -19,8 +18,8 @@ export interface SceneContext {
  * リサイズでは pixel ratio も再適用することで、ブラウザを別DPIモニタに移した場合も追従する。
  */
 export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
+  // 背景は null (透明)。下層の residue canvas と body 背景色 (黒) が透けて見える
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(BACKGROUND_COLOR);
 
   const camera = new THREE.PerspectiveCamera(
     CAMERA_FOV,
@@ -33,8 +32,10 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
+    alpha: true,
     powerPreference: "high-performance",
   });
+  renderer.setClearColor(0x000000, 0);
   applyViewportSize(renderer);
 
   window.addEventListener("resize", () => {
