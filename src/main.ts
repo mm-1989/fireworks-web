@@ -200,3 +200,17 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// ==============================
+// Service Worker 登録
+// ==============================
+// 本番ビルドのみ登録 (dev では Viteのホットリロードと衝突するため)
+// load後に登録すると初回ペイントに影響しない
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => console.log("[sw] registered:", reg.scope))
+      .catch((err) => console.warn("[sw] register failed:", err));
+  });
+}
