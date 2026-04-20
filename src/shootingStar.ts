@@ -167,9 +167,9 @@ function createTrail(
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  // trail は vertex color が 0 まで落ちる: alpha を出力 RGB の max に追従させ、
-  // 下の residue を暗く抜かないようにする
-  applySparklePatch(mat, "brightness");
+  // trail は vertex color が 0 まで落ちる。sparkle パッチ内で alpha が
+  // max(tinted.rgb) に追従するため、フェード時に黒飛びは起きない。
+  applySparklePatch(mat);
   const points = new THREE.Points(geo, mat);
   scene.add(points);
   return { points, positions, colors, alphas, baseColor };
