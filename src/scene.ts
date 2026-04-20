@@ -43,7 +43,9 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
   // exposure を 1 より下げて重なり時の飽和余地を作る。OutputPass がこの設定を使って
   // 最終 LDR 化する。
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.65;
+  // チャージ全開で粒子が大量に重なると ACES でも圧縮しきれず白飛びするため、
+  // 露出を控えめに落として飽和余地を広げる。
+  renderer.toneMappingExposure = 0.55;
   applyViewportSize(renderer);
 
   const resizeListeners: Array<(w: number, h: number) => void> = [];

@@ -44,10 +44,14 @@ export function applySparklePatch(
       )
       .replace(/}\s*$/, "  vSeed = seed;\n}");
 
+    // flicker で RGB だけ落ちると scene→residue の source-over 合成で
+    // 黒い穴として抜けるため、alpha も flicker に追従させる。
+    // "brightness" モードは trail 用: vertex color のフェードが alpha に載らないので
+    // 出力 RGB の最大値で alpha を決める (これで flicker も自然に反映される)。
     const alphaExpr =
       alphaMode === "brightness"
         ? "diffuseColor.a * max(max(tinted.r, tinted.g), tinted.b)"
-        : "diffuseColor.a";
+        : "diffuseColor.a * flicker";
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
