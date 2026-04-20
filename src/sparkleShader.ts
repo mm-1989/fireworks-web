@@ -58,11 +58,13 @@ export function applySparklePatch(
         "#include <opaque_fragment>",
         `
         float phase = uTime + vSeed * 6.2831853;
-        float flicker = 0.75 + 0.25 * sin(uTime * 7.0 + vSeed * 6.2831853);
+        // フリッカは常に 1.0 以下に留める (baseline より明るくはしない)。
+        // 振幅を抑えた方が bloom との重なりで白飛びが暴れない。
+        float flicker = 0.88 + 0.12 * sin(uTime * 4.0 + vSeed * 6.2831853);
         vec3 hueTint = vec3(
-          0.92 + 0.08 * sin(phase * 0.7),
-          0.92 + 0.08 * sin(phase * 0.5 + 2.0),
-          0.92 + 0.08 * sin(phase * 0.6 + 4.0)
+          0.94 + 0.06 * sin(phase * 0.7),
+          0.94 + 0.06 * sin(phase * 0.5 + 2.0),
+          0.94 + 0.06 * sin(phase * 0.6 + 4.0)
         );
         vec3 tinted = outgoingLight * hueTint * flicker;
         gl_FragColor = vec4(tinted, ${alphaExpr});
