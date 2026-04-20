@@ -50,8 +50,10 @@ const rockets: Rocket[] = [];
 const clock = new THREE.Clock();
 
 function animate() {
-  const now = clock.getElapsedTime();
-  const dt = Math.min(clock.getDelta(), 0.05); // ブラウザタブ復帰時の巨大dt防止
+  // 注意: clock.getDelta() を先に呼ぶこと。getElapsedTime()は内部でgetDelta()を
+  //       呼び時計を進めるため、先にElapsedを取ると後続のgetDelta()は≒0になる
+  const dt = Math.min(clock.getDelta(), 0.05); // タブ復帰時の巨大dt防止
+  const now = clock.elapsedTime;
 
   // Rocket更新: 到達したものはBurstに差し替え
   for (let i = rockets.length - 1; i >= 0; i--) {
@@ -99,8 +101,6 @@ canvas.addEventListener("pointerdown", (e) => {
   sound.ensureContext();
 
   const target = screenToWorld(e.clientX, e.clientY);
-
-  // 打ち上げ開始位置: タップ真下・画面下端の少し外
   const bottomY = screenToWorld(e.clientX, window.innerHeight).y - 3;
   const start = new THREE.Vector3(target.x, bottomY, target.z);
 
