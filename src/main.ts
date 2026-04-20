@@ -3,6 +3,7 @@ import "./style.css";
 import { createGlowTexture } from "./glowTexture";
 import { createEmojiTexture } from "./emojiTexture";
 import { SoundManager } from "./audio";
+import { detectPerformanceTier } from "./performanceTier";
 import {
   type Burst,
   type BurstTheme,
@@ -42,6 +43,26 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 // ==============================
 const glowTexture = createGlowTexture();
 const sound = new SoundManager();
+const perf = detectPerformanceTier();
+
+// ==============================
+// 右上にデバッグ用ティアバッジを表示
+// ==============================
+const badge = document.createElement("div");
+badge.textContent = `${perf.tier} (${perf.cores}c${perf.memoryGB ? `/${perf.memoryGB}GB` : ""}) x${perf.scale}`;
+Object.assign(badge.style, {
+  position: "fixed",
+  top: "6px",
+  right: "8px",
+  font: "10px monospace",
+  color: "#ffffffaa",
+  background: "#00000055",
+  padding: "2px 6px",
+  borderRadius: "4px",
+  pointerEvents: "none",
+  zIndex: "10",
+});
+document.body.appendChild(badge);
 
 // ==============================
 // テーマ定義
@@ -50,7 +71,7 @@ const sound = new SoundManager();
 // ピンク系: AdditiveBlending + HSL で光る花火らしさ
 const pinkTheme: BurstTheme = {
   texture: glowTexture,
-  particleCount: 600,
+  particleCount: Math.round(600 * perf.scale),
   particleSize: 3.2, // 少し小さく
   speedMin: 14,
   speedMax: 32,
@@ -69,7 +90,7 @@ const pinkTheme: BurstTheme = {
 function emojiTheme(emoji: string, rocketColor: number): BurstTheme {
   return {
     texture: createEmojiTexture(emoji, 128),
-    particleCount: 90, // 絵文字は大きく描画するので少なめ
+    particleCount: Math.max(24, Math.round(90 * perf.scale)), // 最低24粒は維持
     particleSize: 3.8, // 絵文字が読める程度の大きさ
     speedMin: 10,
     speedMax: 22,
