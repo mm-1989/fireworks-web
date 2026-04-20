@@ -1,5 +1,15 @@
 import * as THREE from "three";
 import "./style.css";
+import { createGlowTexture } from "./glowTexture";
+import { SoundManager } from "./audio";
+import {
+  type Burst,
+  type Rocket,
+  createBurst,
+  createRocket,
+  updateBurst,
+  updateRocket,
+} from "./fireworks";
 
 // ==============================
 // Scene / Camera / Renderer
@@ -26,117 +36,40 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 // ==============================
-// 花火パーティクル = 1発の爆発
+// 共有リソース
 // ==============================
-const PARTICLES_PER_BURST = 180;
-const GRAVITY = -15; // y方向の落下加速度
-const LIFETIME = 2.2; // 秒
-
-interface Burst {
-  points: THREE.Points;
-  velocities: Float32Array; // x,y,z × particleCount
-  born: number; // 生成時刻(秒)
-}
+const glowTexture = createGlowTexture();
+const sound = new SoundManager();
 
 const bursts: Burst[] = [];
-
-function createBurst(worldX: number, worldY: number, worldZ: number): Burst {
-  const count = PARTICLES_PER_BURST;
-  const positions = new Float32Array(count * 3);
-  const velocities = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-
-  // 花火全体の色相をランダムに1つ決め、同系色で統一
-  const baseHue = Math.random();
-  const color = new THREE.Color();
-
-  for (let i = 0; i < count; i++) {
-    // 球状に等方向発射 → 自然な爆発形状
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    const speed = 8 + Math.random() * 6;
-
-    const vx = speed * Math.sin(phi) * Math.cos(theta);
-    const vy = speed * Math.sin(phi) * Math.sin(theta);
-    const vz = speed * Math.cos(phi);
-
-    positions[i * 3 + 0] = worldX;
-    positions[i * 3 + 1] = worldY;
-    positions[i * 3 + 2] = worldZ;
-
-    velocities[i * 3 + 0] = vx;
-    velocities[i * 3 + 1] = vy;
-    velocities[i * 3 + 2] = vz;
-
-    // 色相は同系、彩度/明度をランダムで「火の粉」感を出す
-    color.setHSL(
-      (baseHue + (Math.random() - 0.5) * 0.1) % 1,
-      0.9,
-      0.5 + Math.random() * 0.4,
-    );
-    colors[i * 3 + 0] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-  const material = new THREE.PointsMaterial({
-    size: 0.6,
-    vertexColors: true,
-    transparent: true,
-    opacity: 1,
-    blending: THREE.AdditiveBlending, // 光の重なりで明るく見える
-    depthWrite: false,
-  });
-
-  const points = new THREE.Points(geometry, material);
-  scene.add(points);
-
-  return { points, velocities, born: clock.getElapsedTime() };
-}
+const rockets: Rocket[] = [];
 
 // ==============================
-// 毎フレーム更新
+// アニメーションループ
 // ==============================
 const clock = new THREE.Clock();
 
 function animate() {
   const now = clock.getElapsedTime();
-  const dt = clock.getDelta();
+  const dt = Math.min(clock.getDelta(), 0.05); // ブラウザタブ復帰時の巨大dt防止
 
-  for (let b = bursts.length - 1; b >= 0; b--) {
-    const burst = bursts[b];
-    const age = now - burst.born;
-    const lifeRatio = age / LIFETIME;
-
-    if (lifeRatio >= 1) {
-      // 寿命終了 → シーンから削除してメモリ解放
-      scene.remove(burst.points);
-      burst.points.geometry.dispose();
-      (burst.points.material as THREE.Material).dispose();
-      bursts.splice(b, 1);
-      continue;
+  // Rocket更新: 到達したものはBurstに差し替え
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    if (updateRocket(r, scene, dt)) {
+      bursts.push(
+        createBurst(scene, glowTexture, r.target.x, r.target.y, r.target.z, now),
+      );
+      sound.playExplosion();
+      rockets.splice(i, 1);
     }
+  }
 
-    const positions = burst.points.geometry.attributes.position
-      .array as Float32Array;
-    const velocities = burst.velocities;
-
-    // 速度積分 + 重力
-    for (let i = 0; i < PARTICLES_PER_BURST; i++) {
-      velocities[i * 3 + 1] += GRAVITY * dt;
-      positions[i * 3 + 0] += velocities[i * 3 + 0] * dt;
-      positions[i * 3 + 1] += velocities[i * 3 + 1] * dt;
-      positions[i * 3 + 2] += velocities[i * 3 + 2] * dt;
+  // Burst更新: 寿命切れは自動削除
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    if (updateBurst(bursts[i], scene, dt, now)) {
+      bursts.splice(i, 1);
     }
-    burst.points.geometry.attributes.position.needsUpdate = true;
-
-    // フェードアウト (後半で急速に消える)
-    const material = burst.points.material as THREE.PointsMaterial;
-    material.opacity = Math.max(0, 1 - Math.pow(lifeRatio, 2));
   }
 
   renderer.render(scene, camera);
@@ -145,28 +78,38 @@ function animate() {
 animate();
 
 // ==============================
-// タップ/クリック → 花火
+// 画面 px → z=0 平面上のワールド座標
 // ==============================
-// 画面座標 (px) を z=0 平面上のワールド座標に変換
 function screenToWorld(clientX: number, clientY: number): THREE.Vector3 {
-  const ndc = new THREE.Vector2(
-    (clientX / window.innerWidth) * 2 - 1,
-    -((clientY / window.innerHeight) * 2 - 1),
-  );
-  const vec = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera);
+  const ndcX = (clientX / window.innerWidth) * 2 - 1;
+  const ndcY = -((clientY / window.innerHeight) * 2 - 1);
+  const vec = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(camera);
   const dir = vec.sub(camera.position).normalize();
   const distance = -camera.position.z / dir.z;
   return camera.position.clone().add(dir.multiplyScalar(distance));
 }
 
+// ==============================
+// タップ → Rocket発射
+// ==============================
 canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
-  const pos = screenToWorld(e.clientX, e.clientY);
-  bursts.push(createBurst(pos.x, pos.y, pos.z));
+
+  // iOSの音声制限を最初のタップで解除
+  sound.ensureContext();
+
+  const target = screenToWorld(e.clientX, e.clientY);
+
+  // 打ち上げ開始位置: タップ真下・画面下端の少し外
+  const bottomY = screenToWorld(e.clientX, window.innerHeight).y - 3;
+  const start = new THREE.Vector3(target.x, bottomY, target.z);
+
+  rockets.push(createRocket(scene, glowTexture, start, target));
+  sound.playLaunch();
 });
 
 // ==============================
-// リサイズ対応
+// リサイズ
 // ==============================
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
