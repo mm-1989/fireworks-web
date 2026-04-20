@@ -4,7 +4,7 @@ import { SoundManager } from "./audio";
 import { type Burst, createBurst, disposeBurst, updateBurst } from "./burst";
 import { applyChargeToTheme, computeChargeStep } from "./charge";
 import { createChargeIndicator } from "./chargeIndicator";
-import { showClearOverlay } from "./clearOverlay";
+import { showClearCeremony } from "./clearCeremony";
 import {
   CLEAR_CHECK_INTERVAL_SEC,
   CLEAR_FILL_THRESHOLD,
@@ -32,14 +32,17 @@ import {
 import { type BurstTheme, createThemePicker } from "./themes";
 
 // ---- DOM ----
-const sceneCanvas = document.getElementById("scene");
-const residueCanvas = document.getElementById("residue");
-if (!(sceneCanvas instanceof HTMLCanvasElement)) {
+const sceneCanvasEl = document.getElementById("scene");
+const residueCanvasEl = document.getElementById("residue");
+if (!(sceneCanvasEl instanceof HTMLCanvasElement)) {
   throw new Error('Expected <canvas id="scene"> in index.html');
 }
-if (!(residueCanvas instanceof HTMLCanvasElement)) {
+if (!(residueCanvasEl instanceof HTMLCanvasElement)) {
   throw new Error('Expected <canvas id="residue"> in index.html');
 }
+// 関数内から参照したときに TS の型絞り込みが外れるため、narrowed な別名に再束縛する
+const sceneCanvas: HTMLCanvasElement = sceneCanvasEl;
+const residueCanvas: HTMLCanvasElement = residueCanvasEl;
 
 // ---- Core systems ----
 const { scene, camera, renderer } = createSceneContext(sceneCanvas);
@@ -163,8 +166,74 @@ function maybeCheckClear(dt: number): void {
   if (rate >= CLEAR_FILL_THRESHOLD) {
     cleared = true;
     console.log(`[clear] fill rate = ${(rate * 100).toFixed(1)}%`);
-    showClearOverlay();
+    onClear();
   }
+}
+
+/** クリア演出を呼び出す。residue を画像化してから ceremony を開く */
+function onClear(): void {
+  const dataUrl = residueCanvas.toDataURL("image/png");
+  const fileName = buildFileName();
+  showClearCeremony(dataUrl, {
+    onSave: () => saveImage(dataUrl, fileName),
+    onRestart: () => reset(),
+  });
+}
+
+function buildFileName(): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `fireworks-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.png`;
+}
+
+/**
+ * Web Share API 優先で保存。iOS Safari なら共有シートから写真アプリに渡せる。
+ * 非対応環境/失敗時は <a download> にフォールバック。
+ * ユーザが共有シートをキャンセル (AbortError) した場合はフォールバックしない。
+ */
+async function saveImage(dataUrl: string, fileName: string): Promise<void> {
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], fileName, { type: "image/png" });
+
+    const shareNav = navigator as Navigator & {
+      canShare?: (data: ShareData) => boolean;
+    };
+    if (
+      typeof navigator.share === "function" &&
+      typeof shareNav.canShare === "function" &&
+      shareNav.canShare({ files: [file] })
+    ) {
+      try {
+        await navigator.share({ files: [file], title: "はなび" });
+        return;
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        // それ以外は下のダウンロードにフォールバック
+      }
+    }
+
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    console.error("[save] failed", err);
+  }
+}
+
+/** ゲーム状態を初期化。クリア演出から「もういちど」で呼ばれる */
+function reset(): void {
+  for (const b of bursts) disposeBurst(b, scene);
+  for (const s of shootingStars) disposeShootingStar(s, scene);
+  bursts.length = 0;
+  shootingStars.length = 0;
+  residue.clear();
+  cleared = false;
+  secondsSinceLastCheck = 0;
+  debugBadge.setFillRate(0);
 }
 
 animate();

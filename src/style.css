@@ -68,3 +68,109 @@ body {
   opacity: 1;
   transform: scale(1);
 }
+
+/* クリア演出。residue をキャプチャした作品を額縁に入れて表示する */
+.clear-ceremony {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: radial-gradient(
+    circle at center,
+    rgba(20, 10, 40, 0.55),
+    rgba(0, 0, 0, 0.78)
+  );
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: clear-ceremony-fade 0.45s ease both;
+}
+
+@keyframes clear-ceremony-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.clear-ceremony__praise {
+  font-size: clamp(22px, 5vw, 32px);
+  font-weight: 700;
+  color: #fff3c4;
+  text-shadow: 0 0 14px rgba(255, 210, 120, 0.65);
+  letter-spacing: 0.04em;
+}
+
+/* 金色の額縁風グラデーション。内側に少しハイライト */
+.clear-ceremony__frame {
+  padding: clamp(10px, 2.2vw, 18px);
+  background: linear-gradient(
+    135deg,
+    #8a6a2a 0%,
+    #d7b463 25%,
+    #fff2b6 50%,
+    #d7b463 75%,
+    #8a6a2a 100%
+  );
+  border-radius: 12px;
+  box-shadow:
+    0 0 40px rgba(255, 210, 120, 0.35),
+    inset 0 0 10px rgba(255, 240, 200, 0.55);
+  max-width: min(86vw, 560px);
+}
+
+.clear-ceremony__image {
+  display: block;
+  width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+
+.clear-ceremony__actions {
+  display: flex;
+  gap: 16px;
+}
+
+.clear-ceremony__btn {
+  padding: 12px 26px;
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  border-radius: 999px;
+  color: #1a1a1a;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 80ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+
+.clear-ceremony__btn--save {
+  background: linear-gradient(180deg, #ffe8a0, #ffcf55);
+  box-shadow: 0 4px 14px rgba(255, 200, 80, 0.45);
+}
+
+.clear-ceremony__btn--restart {
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.25);
+}
+
+.clear-ceremony__btn:active {
+  transform: scale(0.96);
+}
+
+.clear-ceremony__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
