@@ -28,6 +28,7 @@ import { detectPerformanceTier } from "./performanceTier";
 import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
 import { createSceneContext } from "./scene";
+import { sparkleUniforms } from "./sparkleShader";
 import { registerServiceWorker } from "./serviceWorker";
 import {
   type ShootingStar,
@@ -77,6 +78,7 @@ function animate(): void {
   //       呼び時計を進めるため、先に elapsed を取ると後続の getDelta() は ≒0 になる。
   const dt = Math.min(clock.getDelta(), DT_MAX);
   const now = clock.elapsedTime;
+  sparkleUniforms.uTime.value = now;
 
   for (let i = bursts.length - 1; i >= 0; i--) {
     if (updateBurst(bursts[i], scene, dt, now, residue.stampBurst)) {

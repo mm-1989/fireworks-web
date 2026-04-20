@@ -7,6 +7,7 @@ import {
   SHOOTING_STAR_TRAIL_MAX,
   SHOOTING_STAR_TRAIL_SIZE,
 } from "./config";
+import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
 
 /**
  * スワイプで発射される流れ星。
@@ -120,6 +121,7 @@ function createHead(
       3,
     ),
   );
+  geo.setAttribute("seed", createSeedAttribute(1));
   const mat = new THREE.PointsMaterial({
     size: SHOOTING_STAR_HEAD_SIZE,
     map: texture,
@@ -129,6 +131,7 @@ function createHead(
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
+  applySparklePatch(mat);
   const head = new THREE.Points(geo, mat);
   scene.add(head);
   return head;
@@ -154,6 +157,7 @@ function createTrail(
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute("seed", createSeedAttribute(SHOOTING_STAR_TRAIL_MAX));
 
   const mat = new THREE.PointsMaterial({
     size: SHOOTING_STAR_TRAIL_SIZE,
@@ -163,24 +167,12 @@ function createTrail(
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  patchAlphaFollowsBrightness(mat);
+  // trail は vertex color が 0 まで落ちる: alpha を出力 RGB の max に追従させ、
+  // 下の residue を暗く抜かないようにする
+  applySparklePatch(mat, "brightness");
   const points = new THREE.Points(geo, mat);
   scene.add(points);
   return { points, positions, colors, alphas, baseColor };
-}
-
-/**
- * フラグメント出力の alpha を RGB 輝度 (max チャンネル) に追従させるシェーダパッチ。
- * vertex color で RGB だけフェードするトレイル用: フェード済み粒子が
- * scene canvas の alpha を残してしまい、下の residue 焼き付けを暗く抜くのを防ぐ。
- */
-function patchAlphaFollowsBrightness(material: THREE.PointsMaterial): void {
-  material.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <opaque_fragment>",
-      "gl_FragColor = vec4( outgoingLight, diffuseColor.a * max(max(outgoingLight.r, outgoingLight.g), outgoingLight.b) );",
-    );
-  };
 }
 
 function updateHeadPosition(star: ShootingStar): void {

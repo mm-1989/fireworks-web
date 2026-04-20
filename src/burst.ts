@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { STAMP_LIFE_RATIO } from "./config";
+import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
 import type { BurstTheme } from "./themes";
 
 /**
@@ -35,6 +36,7 @@ export function createBurst(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("seed", createSeedAttribute(count));
 
   const material = new THREE.PointsMaterial({
     size: theme.particleSize,
@@ -45,6 +47,7 @@ export function createBurst(
     blending: theme.blending,
     depthWrite: false,
   });
+  applySparklePatch(material);
 
   const points = new THREE.Points(geometry, material);
   scene.add(points);
