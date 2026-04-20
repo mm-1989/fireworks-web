@@ -7,6 +7,7 @@ import {
   blendCountForStep,
   computeChargeStep,
 } from "./charge";
+import { type ChargeAura, createChargeAura } from "./chargeAura";
 import { createChargeIndicator } from "./chargeIndicator";
 import { showClearCeremony } from "./clearCeremony";
 import {
@@ -71,6 +72,8 @@ const clock = new THREE.Clock();
 const accentColor = new THREE.Color();
 let cleared = false;
 let secondsSinceLastCheck = 0;
+/** 押下中だけ存在する aura。onPressStart で生成、onPressEnd/onSwipeStart/onClear で dispose */
+let chargeAura: ChargeAura | null = null;
 
 // ---- Main loop ----
 function animate(): void {
@@ -91,6 +94,8 @@ function animate(): void {
       shootingStars.splice(i, 1);
     }
   }
+
+  chargeAura?.update(dt);
 
   maybeCheckClear(dt);
   postFx.render();
@@ -151,8 +156,9 @@ function maybeCheckClear(dt: number): void {
 
 /** クリア演出を呼び出す。residue を黒背景で画像化してから ceremony を開く */
 function onClear(): void {
-  // 押下中にクリアに達した場合、インジケータが画面に残るので明示的に隠す
+  // 押下中にクリアに達した場合、インジケータ/aura が画面に残るので明示的に破棄する
   chargeIndicator.hide();
+  disposeChargeAura();
   const dataUrl = residue.toDataURL();
   const fileName = buildFileName();
   showClearCeremony(dataUrl, {
@@ -167,26 +173,39 @@ function reset(): void {
   for (const s of shootingStars) disposeShootingStar(s, scene);
   bursts.length = 0;
   shootingStars.length = 0;
+  disposeChargeAura();
   residue.clear();
   cleared = false;
   secondsSinceLastCheck = 0;
   debugBadge.setFillRate(0);
 }
 
+function disposeChargeAura(): void {
+  if (chargeAura) {
+    chargeAura.dispose();
+    chargeAura = null;
+  }
+}
+
 animate();
 
 // ---- Input: タップ = 最小 burst、長押し = 10 段階チャージで拡大 + 混色 ----
 bindPointerGesture(sceneCanvas, camera, {
-  onPressStart: ({ clientX, clientY }) => {
+  onPressStart: ({ clientX, clientY, target }) => {
     if (cleared) return;
     sound.ensureContext();
     chargeIndicator.show(clientX, clientY);
+    disposeChargeAura();
+    chargeAura = createChargeAura(scene, glowTexture, target);
   },
   onPressUpdate: (holdMs) => {
-    chargeIndicator.setStep(computeChargeStep(holdMs));
+    const step = computeChargeStep(holdMs);
+    chargeIndicator.setStep(step);
+    chargeAura?.setStep(step);
   },
   onPressEnd: ({ target, holdMs }) => {
     chargeIndicator.hide();
+    disposeChargeAura();
     if (cleared) return;
     spawnBurst(
       computeChargeStep(holdMs),
@@ -199,6 +218,7 @@ bindPointerGesture(sceneCanvas, camera, {
   },
   onSwipeStart: () => {
     chargeIndicator.hide();
+    disposeChargeAura();
   },
   onSwipe: ({ startTarget, endTarget, direction, worldSpeedPerSec, distancePx }) => {
     if (cleared) return;

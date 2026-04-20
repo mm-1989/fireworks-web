@@ -38,6 +38,14 @@ export const CHARGE_MAX_STEPS = 10;
 /** 押下位置から指がこの距離 (px) を越えたらチャージを中断 (Phase C スワイプ用) */
 export const CHARGE_MOVE_CANCEL_PX = 12;
 
+// ---- Charge aura (押下位置を渦巻く粒子) ----
+/** 同時存在する aura 粒子数 */
+export const CHARGE_AURA_MAX = 120;
+/** aura の外周半径 (world)。粒子はここから吸い込まれていく */
+export const CHARGE_AURA_OUTER_R = 5;
+/** 外周ジッタ。各粒子の spawn 半径は OUTER_R..OUTER_R+JITTER */
+export const CHARGE_AURA_OUTER_R_JITTER = 2;
+
 // ---- Shooting star (スワイプで出る流れ星) ----
 export const SHOOTING_STAR_HEAD_SIZE = 4.0;
 export const SHOOTING_STAR_TRAIL_SIZE = 2.2;
