@@ -13,6 +13,16 @@ export const MAX_PIXEL_RATIO = 2;
 // ---- Animation loop ----
 export const DT_MAX = 0.05; // フレーム遅延時の異常な速度倍加を防ぐ上限
 
+// ---- Post-processing (UnrealBloomPass) ----
+/** AdditiveBlending の輝度は簡単に 1 を超える。低くしないとほぼ何も拾わない */
+export const BLOOM_THRESHOLD = 0.1;
+/** ブルームの広がり半径 (画面比)。上げるほど滲みが太い */
+export const BLOOM_RADIUS = 0.85;
+/** Tier 別の bloom 強度。low は電力・発熱優先で控えめに */
+export const BLOOM_STRENGTH_LOW = 0.6;
+export const BLOOM_STRENGTH_MID = 0.9;
+export const BLOOM_STRENGTH_HIGH = 1.2;
+
 // ---- Charge (長押しチャージ) ----
 /** 1 段階あたりの保持時間 (ms)。10 段階で 1500ms = 最大溜め */
 export const CHARGE_STEP_MS = 150;

@@ -11,6 +11,8 @@ export interface SceneContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
+  /** リサイズ時に追加で通知したいリスナを登録する (ポストエフェクト等) */
+  onResize(listener: (width: number, height: number) => void): void;
 }
 
 /**
@@ -38,13 +40,23 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
   renderer.setClearColor(0x000000, 0);
   applyViewportSize(renderer);
 
+  const resizeListeners: Array<(w: number, h: number) => void> = [];
+
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     applyViewportSize(renderer);
+    for (const fn of resizeListeners) fn(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer };
+  return {
+    scene,
+    camera,
+    renderer,
+    onResize(listener) {
+      resizeListeners.push(listener);
+    },
+  };
 }
 
 function applyViewportSize(renderer: THREE.WebGLRenderer): void {

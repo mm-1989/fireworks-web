@@ -25,6 +25,7 @@ import { createGlowTexture } from "./glowTexture";
 import { buildFileName, saveImage } from "./imageExport";
 import { bindPointerGesture } from "./input";
 import { detectPerformanceTier } from "./performanceTier";
+import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
 import { createSceneContext } from "./scene";
 import { registerServiceWorker } from "./serviceWorker";
@@ -50,10 +51,13 @@ const sceneCanvas: HTMLCanvasElement = sceneCanvasEl;
 const residueCanvas: HTMLCanvasElement = residueCanvasEl;
 
 // ---- Core systems ----
-const { scene, camera, renderer } = createSceneContext(sceneCanvas);
+const sceneCtx = createSceneContext(sceneCanvas);
+const { scene, camera, renderer } = sceneCtx;
 const glowTexture = createGlowTexture();
 const sound = new SoundManager();
 const perf = detectPerformanceTier();
+const postFx = createPostFx(renderer, scene, camera, perf);
+sceneCtx.onResize((w, h) => postFx.setSize(w, h));
 const themePicker = createThemePicker(glowTexture, perf);
 const residue = createResidueLayer(residueCanvas, camera);
 const debugBadge = mountDebugBadge(perf);
@@ -87,7 +91,7 @@ function animate(): void {
   }
 
   maybeCheckClear(dt);
-  renderer.render(scene, camera);
+  postFx.render();
   requestAnimationFrame(animate);
 }
 
