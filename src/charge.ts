@@ -22,6 +22,14 @@ export function computeChargeStep(holdMs: number): number {
  *   particleSize:  0.85x → 1.25x (3.2 → 2.72..4.0)
  *   lifetime:      0.7x → 1.3x   (2.0 → 1.4..2.6)
  */
+/**
+ * チャージ段階から burst に混ぜる色数を返す (1..4)。
+ * 0-2=1色, 3-5=2色, 6-8=3色, 9-10=4色
+ */
+export function blendCountForStep(step: number): number {
+  return Math.min(4, 1 + Math.floor(step / 3));
+}
+
 export function applyChargeToTheme(
   theme: BurstTheme,
   step: number,

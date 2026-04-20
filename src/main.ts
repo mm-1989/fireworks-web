@@ -2,7 +2,11 @@ import * as THREE from "three";
 import "./style.css";
 import { SoundManager } from "./audio";
 import { type Burst, createBurst, disposeBurst, updateBurst } from "./burst";
-import { applyChargeToTheme, computeChargeStep } from "./charge";
+import {
+  applyChargeToTheme,
+  blendCountForStep,
+  computeChargeStep,
+} from "./charge";
 import { createChargeIndicator } from "./chargeIndicator";
 import { showClearCeremony } from "./clearCeremony";
 import {
@@ -18,6 +22,7 @@ import {
 } from "./config";
 import { mountDebugBadge } from "./debugBadge";
 import { createGlowTexture } from "./glowTexture";
+import { buildFileName, saveImage } from "./imageExport";
 import { bindPointerGesture } from "./input";
 import { detectPerformanceTier } from "./performanceTier";
 import { createResidueLayer } from "./residue";
@@ -29,7 +34,7 @@ import {
   disposeShootingStar,
   updateShootingStar,
 } from "./shootingStar";
-import { type BurstTheme, createThemePicker } from "./themes";
+import { createThemePicker } from "./themes";
 
 // ---- DOM ----
 const sceneCanvasEl = document.getElementById("scene");
@@ -58,6 +63,7 @@ const chargeIndicator = createChargeIndicator();
 const bursts: Burst[] = [];
 const shootingStars: ShootingStar[] = [];
 const clock = new THREE.Clock();
+const accentColor = new THREE.Color();
 let cleared = false;
 let secondsSinceLastCheck = 0;
 
@@ -69,13 +75,13 @@ function animate(): void {
   const now = clock.elapsedTime;
 
   for (let i = bursts.length - 1; i >= 0; i--) {
-    if (updateBurst(bursts[i], scene, dt, now, stampBurstToResidue)) {
+    if (updateBurst(bursts[i], scene, dt, now, residue.stampBurst)) {
       bursts.splice(i, 1);
     }
   }
 
   for (let i = shootingStars.length - 1; i >= 0; i--) {
-    if (updateShootingStar(shootingStars[i], scene, dt, now, stampPointToResidue)) {
+    if (updateShootingStar(shootingStars[i], scene, dt, now, residue.stampPoint)) {
       shootingStars.splice(i, 1);
     }
   }
@@ -85,39 +91,23 @@ function animate(): void {
   requestAnimationFrame(animate);
 }
 
-function stampBurstToResidue(burst: Burst): void {
-  residue.stampBurst(burst);
-}
-
-function stampPointToResidue(
-  pos: THREE.Vector3,
-  color: THREE.Color,
-  size: number,
-): void {
-  residue.stampPoint(pos, color, size);
-}
-
 /**
  * 新規 burst を生成。上限を超える場合は最古の burst を即時焼き付け+破棄して枠を確保する。
  * 連打時の同時粒子数爆発を抑え、iOS でのフレーム落ちを防ぐ。
  */
-function spawnBurst(
-  theme: BurstTheme,
-  x: number,
-  y: number,
-  z: number,
-  now: number,
-): void {
+function spawnBurst(step: number, x: number, y: number, z: number, now: number): void {
   if (bursts.length >= MAX_CONCURRENT_BURSTS) {
     const oldest = bursts.shift();
     if (oldest) {
       if (!oldest.stamped) {
         oldest.stamped = true;
-        stampBurstToResidue(oldest);
+        residue.stampBurst(oldest);
       }
       disposeBurst(oldest, scene);
     }
   }
+  const base = themePicker.pickBlend(blendCountForStep(step));
+  const theme = applyChargeToTheme(base, step);
   bursts.push(createBurst(scene, theme, x, y, z, now));
 }
 
@@ -125,33 +115,16 @@ function spawnBurst(
 function spawnShootingStar(
   start: THREE.Vector3,
   velocity: THREE.Vector3,
-  color: THREE.Color,
   now: number,
 ): void {
   if (shootingStars.length >= SHOOTING_STARS_MAX_CONCURRENT) {
     const oldest = shootingStars.shift();
     if (oldest) disposeShootingStar(oldest, scene);
   }
+  const color = themePicker.pickAccentColor(accentColor).clone();
   shootingStars.push(
     createShootingStar(scene, glowTexture, start, velocity, color, now),
   );
-}
-
-/** 現在のテーマ候補から 1 色サンプル (流れ星の色付け用) */
-function pickStarColor(): THREE.Color {
-  const theme = themePicker.pick();
-  const color = new THREE.Color();
-  if (theme.coloring.mode === "hsl") {
-    const range = theme.coloring.hueRanges[0];
-    color.setHSL(
-      range.hueMin + Math.random() * (range.hueMax - range.hueMin),
-      1.0,
-      0.75,
-    );
-  } else {
-    color.set(theme.coloring.color);
-  }
-  return color;
 }
 
 function maybeCheckClear(dt: number): void {
@@ -180,50 +153,6 @@ function onClear(): void {
   });
 }
 
-function buildFileName(): string {
-  const d = new Date();
-  const pad = (n: number): string => String(n).padStart(2, "0");
-  return `fireworks-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.png`;
-}
-
-/**
- * Web Share API 優先で保存。iOS Safari なら共有シートから写真アプリに渡せる。
- * 非対応環境/失敗時は <a download> にフォールバック。
- * ユーザが共有シートをキャンセル (AbortError) した場合はフォールバックしない。
- */
-async function saveImage(dataUrl: string, fileName: string): Promise<void> {
-  try {
-    const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], fileName, { type: "image/png" });
-
-    const shareNav = navigator as Navigator & {
-      canShare?: (data: ShareData) => boolean;
-    };
-    if (
-      typeof navigator.share === "function" &&
-      typeof shareNav.canShare === "function" &&
-      shareNav.canShare({ files: [file] })
-    ) {
-      try {
-        await navigator.share({ files: [file], title: "はなび" });
-        return;
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        // それ以外は下のダウンロードにフォールバック
-      }
-    }
-
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch (err) {
-    console.error("[save] failed", err);
-  }
-}
-
 /** ゲーム状態を初期化。クリア演出から「もういちど」で呼ばれる */
 function reset(): void {
   for (const b of bursts) disposeBurst(b, scene);
@@ -239,11 +168,6 @@ function reset(): void {
 animate();
 
 // ---- Input: タップ = 最小 burst、長押し = 10 段階チャージで拡大 + 混色 ----
-/** 段階ごとの混色数。0-2=1色, 3-5=2色, 6-8=3色, 9-10=4色 */
-function blendCountForStep(step: number): number {
-  return Math.min(4, 1 + Math.floor(step / 3));
-}
-
 bindPointerGesture(sceneCanvas, camera, {
   onPressStart: ({ clientX, clientY }) => {
     if (cleared) return;
@@ -256,10 +180,13 @@ bindPointerGesture(sceneCanvas, camera, {
   onPressEnd: ({ target, holdMs }) => {
     chargeIndicator.hide();
     if (cleared) return;
-    const step = computeChargeStep(holdMs);
-    const base = themePicker.pickBlend(blendCountForStep(step));
-    const theme = applyChargeToTheme(base, step);
-    spawnBurst(theme, target.x, target.y, target.z, clock.elapsedTime);
+    spawnBurst(
+      computeChargeStep(holdMs),
+      target.x,
+      target.y,
+      target.z,
+      clock.elapsedTime,
+    );
     sound.playExplosion();
   },
   onSwipeStart: () => {
@@ -284,7 +211,7 @@ bindPointerGesture(sceneCanvas, camera, {
       start.x += -direction.y * jitter;
       start.y += direction.x * jitter;
       const velocity = direction.clone().multiplyScalar(speed);
-      spawnShootingStar(start, velocity, pickStarColor(), now);
+      spawnShootingStar(start, velocity, now);
     }
     sound.playExplosion();
   },

@@ -3,7 +3,7 @@ import type { TierInfo } from "./performanceTier";
 
 /**
  * 花火の見た目を決めるテーマ設定。
- * `burst` / `rocket` モジュールはこの型を受け取って挙動をパラメトライズする。
+ * `burst` モジュールはこの型を受け取って挙動をパラメトライズする。
  */
 export type BurstTheme = {
   texture: THREE.Texture;
@@ -14,17 +14,11 @@ export type BurstTheme = {
   gravity: number;
   lifetime: number;
   blending: THREE.Blending;
-  /** パーティクル色の決め方 */
-  coloring:
-    | { mode: "uniform"; color: number } // 全粒子同じ色 (絵文字系)
-    | {
-        mode: "hsl";
-        /** 複数の hue 帯を列挙。各粒子は一様ランダムにどれか 1 つを選ぶ */
-        hueRanges: Array<{ hueMin: number; hueMax: number }>;
-        sparkleChance: number; // 白キラキラ粒子の混ざる確率
-      };
-  /** Rocket 本体の色。省略時は既定色が使われる */
-  rocketColor?: number;
+  /** パーティクル色の決め方。複数の hue 帯を列挙し、各粒子は一様ランダムにどれか 1 つを選ぶ */
+  coloring: {
+    hueRanges: Array<{ hueMin: number; hueMax: number }>;
+    sparkleChance: number; // 白キラキラ粒子の混ざる確率
+  };
 };
 
 export interface ThemePicker {
@@ -36,23 +30,23 @@ export interface ThemePicker {
    * count <= 1 は pick() と等価、count が候補数を超えた分は切り詰める。
    */
   pickBlend(count: number): BurstTheme;
+  /** ランダムなテーマの hue 帯から 1 色サンプリング。流れ星の色付け用 */
+  pickAccentColor(target: THREE.Color): THREE.Color;
 }
 
 /**
  * デバイス性能に応じて粒子数をスケールしたテーマ群を作り、
- * 重み付きランダムで 1 つ返す pick() を提供する。
- *
- * Phase A: 絵文字テーマは残留レイヤの検証観点で不要なので一旦外し、glow のみで色相違いを展開する。
+ * ランダムで 1 つ返す pick()、または複数の hue 帯をマージする pickBlend() を提供する。
  */
 export function createThemePicker(
   glowTexture: THREE.Texture,
   perf: TierInfo,
 ): ThemePicker {
   const themes: BurstTheme[] = [
-    createGlowTheme(glowTexture, perf, 0.92, 0.96, 0xff66cc),
-    createGlowTheme(glowTexture, perf, 0.1, 0.15, 0xffd866),
-    createGlowTheme(glowTexture, perf, 0.5, 0.55, 0x66e0ff),
-    createGlowTheme(glowTexture, perf, 0.3, 0.38, 0x88ee88),
+    createGlowTheme(glowTexture, perf, 0.92, 0.96),
+    createGlowTheme(glowTexture, perf, 0.1, 0.15),
+    createGlowTheme(glowTexture, perf, 0.5, 0.55),
+    createGlowTheme(glowTexture, perf, 0.3, 0.38),
   ];
 
   function pickDistinct(count: number): BurstTheme[] {
@@ -75,18 +69,27 @@ export function createThemePicker(
       if (picked.length === 1) return picked[0];
       const base = picked[0];
       const hueRanges: Array<{ hueMin: number; hueMax: number }> = [];
-      for (const t of picked) {
-        if (t.coloring.mode === "hsl") hueRanges.push(...t.coloring.hueRanges);
-      }
+      for (const t of picked) hueRanges.push(...t.coloring.hueRanges);
       return {
         ...base,
         coloring: {
-          mode: "hsl",
           hueRanges,
-          sparkleChance:
-            base.coloring.mode === "hsl" ? base.coloring.sparkleChance : 0.08,
+          sparkleChance: base.coloring.sparkleChance,
         },
       };
+    },
+    pickAccentColor(target) {
+      const theme = themes[Math.floor(Math.random() * themes.length)];
+      const range =
+        theme.coloring.hueRanges[
+          Math.floor(Math.random() * theme.coloring.hueRanges.length)
+        ];
+      target.setHSL(
+        range.hueMin + Math.random() * (range.hueMax - range.hueMin),
+        1.0,
+        0.75,
+      );
+      return target;
     },
   };
 }
@@ -96,7 +99,6 @@ function createGlowTheme(
   perf: TierInfo,
   hueMin: number,
   hueMax: number,
-  rocketColor: number,
 ): BurstTheme {
   return {
     texture: glowTexture,
@@ -108,10 +110,8 @@ function createGlowTheme(
     lifetime: 2.0,
     blending: THREE.AdditiveBlending,
     coloring: {
-      mode: "hsl",
       hueRanges: [{ hueMin, hueMax }],
       sparkleChance: 0.08,
     },
-    rocketColor,
   };
 }

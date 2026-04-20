@@ -145,10 +145,6 @@ function fillInitialState(
 }
 
 function resolveParticleColor(target: THREE.Color, theme: BurstTheme): void {
-  if (theme.coloring.mode === "uniform") {
-    target.set(theme.coloring.color);
-    return;
-  }
   const c = theme.coloring;
   const range = c.hueRanges[Math.floor(Math.random() * c.hueRanges.length)];
   if (Math.random() < c.sparkleChance) {

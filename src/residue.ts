@@ -62,17 +62,37 @@ export function createResidueLayer(
 
   const projected = new THREE.Vector3();
 
+  /**
+   * 指定位置に glow 形状 (中心ほど不透明・縁はフェード) を 1 粒描画する。
+   * 呼び出し側で globalAlpha を事前設定しておくこと。
+   */
+  function drawGlow(x: number, y: number, radius: number, rgb: string): void {
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0.0, `rgba(${rgb},1)`);
+    grad.addColorStop(0.15, `rgba(${rgb},0.85)`);
+    grad.addColorStop(0.4, `rgba(${rgb},0.3)`);
+    grad.addColorStop(1.0, `rgba(${rgb},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+
+  function projectToCanvas(worldPos: THREE.Vector3): { x: number; y: number } | null {
+    projected.copy(worldPos).project(camera);
+    if (projected.z < -1 || projected.z > 1) return null;
+    return {
+      x: (projected.x + 1) * 0.5 * canvas.width,
+      y: (-projected.y + 1) * 0.5 * canvas.height,
+    };
+  }
+
   function stampBurst(burst: Burst): void {
     const positions = burst.points.geometry.attributes.position
       .array as Float32Array;
     const colors = burst.points.geometry.attributes.color.array as Float32Array;
     const material = burst.points.material as THREE.PointsMaterial;
-    const width = canvas.width;
-    const height = canvas.height;
-
-    // 画面上で粒子が占める半径(px)を camera 投影から算出
-    const visualRadius = computeVisualRadiusPx(material.size, camera, height);
-    const radius = visualRadius * RESIDUE_RADIUS_SCALE;
+    const radius =
+      computeVisualRadiusPx(material.size, camera, canvas.height) *
+      RESIDUE_RADIUS_SCALE;
 
     ctx.globalAlpha = RESIDUE_ALPHA;
     for (let i = 0; i < burst.count; i++) {
@@ -84,21 +104,12 @@ export function createResidueLayer(
       projected.project(camera);
       if (projected.z < -1 || projected.z > 1) continue;
 
-      const x = (projected.x + 1) * 0.5 * width;
-      const y = (-projected.y + 1) * 0.5 * height;
+      const x = (projected.x + 1) * 0.5 * canvas.width;
+      const y = (-projected.y + 1) * 0.5 * canvas.height;
       const r = Math.round(colors[i * 3] * 255);
       const g = Math.round(colors[i * 3 + 1] * 255);
       const b = Math.round(colors[i * 3 + 2] * 255);
-
-      // glow テクスチャと同じ形状(中心ほど不透明・縁はフェード)で描画
-      const rgb = `${r},${g},${b}`;
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      grad.addColorStop(0.0, `rgba(${rgb},1)`);
-      grad.addColorStop(0.15, `rgba(${rgb},0.85)`);
-      grad.addColorStop(0.4, `rgba(${rgb},0.3)`);
-      grad.addColorStop(1.0, `rgba(${rgb},0)`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+      drawGlow(x, y, radius, `${r},${g},${b}`);
     }
     ctx.globalAlpha = 1;
   }
@@ -108,28 +119,16 @@ export function createResidueLayer(
     color: THREE.Color,
     particleSize: number,
   ): void {
-    projected.copy(worldPos).project(camera);
-    if (projected.z < -1 || projected.z > 1) return;
-    const width = canvas.width;
-    const height = canvas.height;
-    const x = (projected.x + 1) * 0.5 * width;
-    const y = (-projected.y + 1) * 0.5 * height;
+    const pt = projectToCanvas(worldPos);
+    if (!pt) return;
     const radius =
-      computeVisualRadiusPx(particleSize, camera, height) *
+      computeVisualRadiusPx(particleSize, camera, canvas.height) *
       RESIDUE_RADIUS_SCALE;
     const r = Math.round(color.r * 255);
     const g = Math.round(color.g * 255);
     const b = Math.round(color.b * 255);
-    const rgb = `${r},${g},${b}`;
-
     ctx.globalAlpha = RESIDUE_ALPHA;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    grad.addColorStop(0.0, `rgba(${rgb},1)`);
-    grad.addColorStop(0.15, `rgba(${rgb},0.85)`);
-    grad.addColorStop(0.4, `rgba(${rgb},0.3)`);
-    grad.addColorStop(1.0, `rgba(${rgb},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    drawGlow(pt.x, pt.y, radius, `${r},${g},${b}`);
     ctx.globalAlpha = 1;
   }
 
