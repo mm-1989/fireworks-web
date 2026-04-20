@@ -76,11 +76,40 @@ npm run audit:secrets # gitleaksで全履歴スキャン
 
 ## セキュリティ運用
 
+### ローカル側
 - コミット前: `.husky/pre-commit` が自動で `gitleaks protect --staged` 実行
 - push前: `.husky/pre-push` が `gitleaks detect`(全履歴) + `npm audit` + `build` 実行
 - 秘密情報を誤ってコミットしようとするとpre-commitで失敗 → 修正してから再コミット
 - `.env`系ファイルは`.gitignore`で除外済み。`.env.example`のみコミット可
-- GitHub側の "Secret scanning + Push protection" も有効化推奨(Settings > Code security)
+
+### Public リポジトリ運用(2026-04-20〜)
+GitHub Pages Free プランの制約により Private 不可 → Public で運用。
+**前提:** コミット履歴は永久公開される。後から Private に戻しても fork / キャッシュが残り得る。
+
+**準拠すべきルール:**
+1. コミット著者は必ず `*@users.noreply.github.com` 形式(`git config user.email` 確認)
+2. 機密・個人情報・内部IP・実パス・実メールを絶対にコミット・コメント・メッセージに含めない
+3. `.env` / credentials 系は **commitしない**(pre-commit hook が止める)
+4. 新規依存追加時は必ず `npm audit` 通過を確認。high以上が残るなら原則マージ禁止
+5. main への force push / branch 削除は禁止(GitHub側で branch protection 設定済み前提)
+6. Issues / PR / Discussions は不要なら閉じる。開けるならレビュー前にコード実行しない
+
+**GitHub側で有効化すべき設定:**
+- Settings > Code security: **Secret scanning** + **Push protection** を ON
+- Settings > Branches: main に **branch protection rule**(force push 禁止 / 削除禁止)
+- Dependabot alerts / security updates: ON (デフォルト)
+
+**公開前チェックリスト(新規ファイル/履歴を加えるたび):**
+- [ ] `gitleaks detect` 全履歴パス
+- [ ] `git log --format='%ae' | sort -u` が noreply 形式のみ
+- [ ] grep で実IP/実メール/個人情報がないこと
+- [ ] `.env` や credential 系が tracked files にないこと(`git ls-files | grep -i env`)
+
+### 脆弱性報告
+外部からの報告フローは `SECURITY.md` 参照。GitHub Security Advisories 経由で非公開受付。
+
+### ライセンス
+`LICENSE` は "All rights reserved" 方針。ソース公開はしているが再利用・再配布は許可していない。
 
 ## 既知の注意点
 
