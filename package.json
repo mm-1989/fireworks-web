@@ -1,0 +1,23 @@
+{
+  "name": "fireworks-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "prepare": "husky",
+    "typecheck": "tsc --noEmit",
+    "audit:secrets": "gitleaks detect --redact --no-banner"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0",
+    "husky": "^9.1.7",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.9"
+  },
+  "dependencies": {
+    "three": "^0.184.0"
+  }
+}

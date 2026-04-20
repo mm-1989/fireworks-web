@@ -1,0 +1,49 @@
+# ===== Logs =====
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ===== Dependencies / Build =====
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+coverage
+
+# ===== Editor =====
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== Secrets / Env (SECURITY CRITICAL) =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+secrets/
+.credentials
+.secret
+.secrets
+
+# ===== OS / Misc =====
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===== Claude Code ローカル設定 =====
+.claude/settings.local.json

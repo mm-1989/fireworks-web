@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Pre-commit: 秘密情報スキャン(高速)
+set -e
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠️  gitleaks未インストール。'~/.local/bin/gitleaks' の存在とPATHを確認してください"
+  exit 1
+fi
+
+echo "🔒 gitleaks: ステージング済み変更をスキャン..."
+gitleaks protect --staged --redact --no-banner
+echo "✅ 秘密情報なし"

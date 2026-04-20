@@ -1,0 +1,19 @@
+# LF統一 (WSL/macOS/Linux 間の改行差分事故を防ぐ)
+* text=auto eol=lf
+
+# バイナリ明示 (誤diff防止)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.glb binary
+*.gltf binary

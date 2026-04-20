@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# Pre-push: push前のフルスキャン + ビルド確認
+set -e
+
+echo "🔒 gitleaks: 履歴全体をスキャン中..."
+gitleaks detect --redact --no-banner
+
+echo "🛡️  npm audit: 既知脆弱性チェック..."
+npm audit --audit-level=high || {
+  echo "⚠️  high以上の脆弱性を検出。'npm audit fix' で修正してください"
+  exit 1
+}
+
+echo "🏗️  ビルド確認..."
+npm run build
