@@ -68,17 +68,48 @@ export function createResidueLayer(
   const projected = new THREE.Vector3();
 
   /**
-   * 指定位置に glow 形状 (中心ほど不透明・縁はフェード) を 1 粒描画する。
-   * 呼び出し側で globalAlpha を事前設定しておくこと。
+   * 指定位置に star-glow 形状 (中心グラデ + 十字 anamorphic ray) を 1 粒描画する。
+   * glowTexture と同じプロファイルを 2D 側でも再現し、背景の焼き付けに星型の
+   * 光芒を持たせる。呼び出し側で globalAlpha を事前設定しておくこと。
    */
   function drawGlow(x: number, y: number, radius: number, rgb: string): void {
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    grad.addColorStop(0.0, `rgba(${rgb},1)`);
-    grad.addColorStop(0.15, `rgba(${rgb},0.85)`);
-    grad.addColorStop(0.4, `rgba(${rgb},0.3)`);
-    grad.addColorStop(1.0, `rgba(${rgb},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    ctx.save();
+    ctx.translate(x, y);
+    // Core (従来プロファイル)
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    core.addColorStop(0.0, `rgba(${rgb},1)`);
+    core.addColorStop(0.15, `rgba(${rgb},0.85)`);
+    core.addColorStop(0.4, `rgba(${rgb},0.3)`);
+    core.addColorStop(1.0, `rgba(${rgb},0)`);
+    ctx.fillStyle = core;
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+    // 水平・垂直の anamorphic ray。scale で片軸を潰して細長い光芒にする
+    drawScaledRay(radius * 2.3, 1, 0.12, rgb, 0.55);
+    drawScaledRay(radius * 2.3, 0.12, 1, rgb, 0.55);
+    ctx.restore();
+  }
+
+  /**
+   * 現在の座標系を sx/sy でスケールしてから中心放射グラデを塗る。
+   * save/translate 済み前提 (drawGlow から呼ぶ)。
+   */
+  function drawScaledRay(
+    len: number,
+    sx: number,
+    sy: number,
+    rgb: string,
+    alpha: number,
+  ): void {
+    ctx.save();
+    ctx.scale(sx, sy);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, len);
+    g.addColorStop(0.0, `rgba(${rgb},${alpha.toFixed(3)})`);
+    g.addColorStop(0.2, `rgba(${rgb},${(alpha * 0.5).toFixed(3)})`);
+    g.addColorStop(0.55, `rgba(${rgb},${(alpha * 0.12).toFixed(3)})`);
+    g.addColorStop(1.0, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(-len, -len, len * 2, len * 2);
+    ctx.restore();
   }
 
   function projectToCanvas(worldPos: THREE.Vector3): { x: number; y: number } | null {
