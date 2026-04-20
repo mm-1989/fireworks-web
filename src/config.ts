@@ -22,6 +22,14 @@ export const ROCKET_LAUNCH_Y_OFFSET = 3; // 画面下端より更に下から発
 // ---- Animation loop ----
 export const DT_MAX = 0.05; // フレーム遅延時の異常な速度倍加を防ぐ上限
 
+// ---- Charge (長押しチャージ) ----
+/** 1 段階あたりの保持時間 (ms)。10 段階で 1500ms = 最大溜め */
+export const CHARGE_STEP_MS = 150;
+/** 最大段階。タップ離し時にこの値までで burst スケールが決まる */
+export const CHARGE_MAX_STEPS = 10;
+/** 押下位置から指がこの距離 (px) を越えたらチャージを中断 (Phase C スワイプ用) */
+export const CHARGE_MOVE_CANCEL_PX = 12;
+
 // ---- Residue (焼き付け背景) ----
 /** 1 粒子当たりの焼き付け不透明度。同じ場所に重ねるほど濃くなる */
 export const RESIDUE_ALPHA = 0.5;

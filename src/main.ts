@@ -2,6 +2,8 @@ import * as THREE from "three";
 import "./style.css";
 import { SoundManager } from "./audio";
 import { type Burst, createBurst, disposeBurst, updateBurst } from "./burst";
+import { applyChargeToTheme, computeChargeStep } from "./charge";
+import { createChargeIndicator } from "./chargeIndicator";
 import { showClearOverlay } from "./clearOverlay";
 import {
   CLEAR_CHECK_INTERVAL_SEC,
@@ -11,7 +13,7 @@ import {
 } from "./config";
 import { mountDebugBadge } from "./debugBadge";
 import { createGlowTexture } from "./glowTexture";
-import { bindPointerLaunch } from "./input";
+import { bindPointerGesture } from "./input";
 import { detectPerformanceTier } from "./performanceTier";
 import { createResidueLayer } from "./residue";
 import { createSceneContext } from "./scene";
@@ -36,6 +38,7 @@ const perf = detectPerformanceTier();
 const themePicker = createThemePicker(glowTexture, perf);
 const residue = createResidueLayer(residueCanvas, camera);
 const debugBadge = mountDebugBadge(perf);
+const chargeIndicator = createChargeIndicator();
 
 // ---- Game state ----
 const bursts: Burst[] = [];
@@ -107,13 +110,34 @@ function maybeCheckClear(dt: number): void {
 
 animate();
 
-// ---- Input: タップ位置で即炸裂 ----
-bindPointerLaunch(sceneCanvas, camera, ({ target }) => {
-  if (cleared) return;
-  sound.ensureContext();
-  const theme = themePicker.pick();
-  spawnBurst(theme, target.x, target.y, target.z, clock.elapsedTime);
-  sound.playExplosion();
+// ---- Input: タップ = 最小 burst、長押し = 10 段階チャージで拡大 + 混色 ----
+/** 段階ごとの混色数。0-2=1色, 3-5=2色, 6-8=3色, 9-10=4色 */
+function blendCountForStep(step: number): number {
+  return Math.min(4, 1 + Math.floor(step / 3));
+}
+
+bindPointerGesture(sceneCanvas, camera, {
+  onPressStart: ({ clientX, clientY }) => {
+    if (cleared) return;
+    sound.ensureContext();
+    chargeIndicator.show(clientX, clientY);
+  },
+  onPressUpdate: (holdMs) => {
+    chargeIndicator.setStep(computeChargeStep(holdMs));
+  },
+  onPressEnd: ({ target, holdMs }) => {
+    chargeIndicator.hide();
+    if (cleared) return;
+    const step = computeChargeStep(holdMs);
+    const base = themePicker.pickBlend(blendCountForStep(step));
+    const theme = applyChargeToTheme(base, step);
+    spawnBurst(theme, target.x, target.y, target.z, clock.elapsedTime);
+    sound.playExplosion();
+  },
+  onPressCancel: () => {
+    chargeIndicator.hide();
+    // Phase C でスワイプの流れ星処理をここから分岐予定
+  },
 });
 
 registerServiceWorker();

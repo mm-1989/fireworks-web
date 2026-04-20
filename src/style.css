@@ -48,3 +48,23 @@ body {
 #scene {
   z-index: 2;
 }
+
+/* 長押しチャージの進捗リング。canvas の上に重ねてタップ位置に追従 */
+.charge-indicator {
+  position: fixed;
+  width: 88px;
+  height: 88px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  will-change: opacity, transform;
+}
+
+.charge-indicator--visible {
+  opacity: 1;
+  transform: scale(1);
+}

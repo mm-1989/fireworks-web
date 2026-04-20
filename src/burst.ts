@@ -150,11 +150,12 @@ function resolveParticleColor(target: THREE.Color, theme: BurstTheme): void {
     return;
   }
   const c = theme.coloring;
+  const range = c.hueRanges[Math.floor(Math.random() * c.hueRanges.length)];
   if (Math.random() < c.sparkleChance) {
-    target.setHSL(c.hueMin, 0.3, 0.98);
+    target.setHSL(range.hueMin, 0.3, 0.98);
   } else {
     target.setHSL(
-      c.hueMin + Math.random() * (c.hueMax - c.hueMin),
+      range.hueMin + Math.random() * (range.hueMax - range.hueMin),
       1.0,
       0.65 + Math.random() * 0.3,
     );

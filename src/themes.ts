@@ -19,8 +19,8 @@ export type BurstTheme = {
     | { mode: "uniform"; color: number } // 全粒子同じ色 (絵文字系)
     | {
         mode: "hsl";
-        hueMin: number;
-        hueMax: number;
+        /** 複数の hue 帯を列挙。各粒子は一様ランダムにどれか 1 つを選ぶ */
+        hueRanges: Array<{ hueMin: number; hueMax: number }>;
         sparkleChance: number; // 白キラキラ粒子の混ざる確率
       };
   /** Rocket 本体の色。省略時は既定色が使われる */
@@ -28,7 +28,14 @@ export type BurstTheme = {
 };
 
 export interface ThemePicker {
+  /** 単色 (= 1 つの hue 帯のみ) のテーマを返す */
   pick(): BurstTheme;
+  /**
+   * `count` 個のベーステーマの hue 帯をマージしたテーマを返す。
+   * チャージ量に応じて粒子の色が混ざる演出に使う。
+   * count <= 1 は pick() と等価、count が候補数を超えた分は切り詰める。
+   */
+  pickBlend(count: number): BurstTheme;
 }
 
 /**
@@ -41,27 +48,45 @@ export function createThemePicker(
   glowTexture: THREE.Texture,
   perf: TierInfo,
 ): ThemePicker {
-  const pink = createGlowTheme(glowTexture, perf, 0.92, 0.96, 0xff66cc);
-  const gold = createGlowTheme(glowTexture, perf, 0.1, 0.15, 0xffd866);
-  const cyan = createGlowTheme(glowTexture, perf, 0.5, 0.55, 0x66e0ff);
-  const green = createGlowTheme(glowTexture, perf, 0.3, 0.38, 0x88ee88);
-
-  const pool: { theme: BurstTheme; weight: number }[] = [
-    { theme: pink, weight: 25 },
-    { theme: gold, weight: 25 },
-    { theme: cyan, weight: 25 },
-    { theme: green, weight: 25 },
+  const themes: BurstTheme[] = [
+    createGlowTheme(glowTexture, perf, 0.92, 0.96, 0xff66cc),
+    createGlowTheme(glowTexture, perf, 0.1, 0.15, 0xffd866),
+    createGlowTheme(glowTexture, perf, 0.5, 0.55, 0x66e0ff),
+    createGlowTheme(glowTexture, perf, 0.3, 0.38, 0x88ee88),
   ];
-  const totalWeight = pool.reduce((sum, p) => sum + p.weight, 0);
+
+  function pickDistinct(count: number): BurstTheme[] {
+    const indices = themes.map((_, i) => i);
+    // Fisher-Yates で前 count 要素だけシャッフル
+    const take = Math.max(1, Math.min(count, indices.length));
+    for (let i = 0; i < take; i++) {
+      const j = i + Math.floor(Math.random() * (indices.length - i));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices.slice(0, take).map((i) => themes[i]);
+  }
 
   return {
     pick() {
-      let r = Math.random() * totalWeight;
-      for (const entry of pool) {
-        r -= entry.weight;
-        if (r <= 0) return entry.theme;
+      return themes[Math.floor(Math.random() * themes.length)];
+    },
+    pickBlend(count) {
+      const picked = pickDistinct(count);
+      if (picked.length === 1) return picked[0];
+      const base = picked[0];
+      const hueRanges: Array<{ hueMin: number; hueMax: number }> = [];
+      for (const t of picked) {
+        if (t.coloring.mode === "hsl") hueRanges.push(...t.coloring.hueRanges);
       }
-      return pool[0].theme;
+      return {
+        ...base,
+        coloring: {
+          mode: "hsl",
+          hueRanges,
+          sparkleChance:
+            base.coloring.mode === "hsl" ? base.coloring.sparkleChance : 0.08,
+        },
+      };
     },
   };
 }
@@ -84,8 +109,7 @@ function createGlowTheme(
     blending: THREE.AdditiveBlending,
     coloring: {
       mode: "hsl",
-      hueMin,
-      hueMax,
+      hueRanges: [{ hueMin, hueMax }],
       sparkleChance: 0.08,
     },
     rocketColor,
