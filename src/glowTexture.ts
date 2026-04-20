@@ -32,10 +32,10 @@ export function createGlowTexture(size = 256): THREE.CanvasTexture {
   ctx.globalCompositeOperation = "lighter";
 
   drawCore(ctx, cx, cy, r);
-  drawRay(ctx, cx, cy, r * 0.95, 1, 0.1, 0.9); // 水平
-  drawRay(ctx, cx, cy, r * 0.95, 0.1, 1, 0.9); // 垂直
-  drawDiagonalSpike(ctx, cx, cy, r * 0.65, Math.PI / 4, 0.55);
-  drawDiagonalSpike(ctx, cx, cy, r * 0.65, -Math.PI / 4, 0.55);
+  drawRay(ctx, cx, cy, r * 0.6, 1, 0.07, 0.75); // 水平
+  drawRay(ctx, cx, cy, r * 0.6, 0.07, 1, 0.75); // 垂直
+  drawDiagonalSpike(ctx, cx, cy, r * 0.4, Math.PI / 4, 0.4);
+  drawDiagonalSpike(ctx, cx, cy, r * 0.4, -Math.PI / 4, 0.4);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;

@@ -87,8 +87,8 @@ export function createResidueLayer(
     ctx.fillStyle = core;
     ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
     // 水平・垂直の anamorphic ray。scale で片軸を潰して細長い光芒にする
-    drawScaledRay(radius * 2.3, 1, 0.12, rgb, 0.55);
-    drawScaledRay(radius * 2.3, 0.12, 1, rgb, 0.55);
+    drawScaledRay(radius * 1.5, 1, 0.08, rgb, 0.45);
+    drawScaledRay(radius * 1.5, 0.08, 1, rgb, 0.45);
     ctx.restore();
   }
 

@@ -58,8 +58,8 @@ export function applySparklePatch(material: THREE.PointsMaterial): void {
         "#include <map_particle_fragment>",
         `
         float rotDir = (vSeed > 0.5) ? 1.0 : -1.0;
-        float rotSpeed = 0.4 + fract(vSeed * 13.37) * 0.9;
-        float wobble = 0.18 * sin(uTime * 0.35 + vSeed * 6.2831853);
+        float rotSpeed = 0.15 + fract(vSeed * 13.37) * 0.35;
+        float wobble = 0.1 * sin(uTime * 0.3 + vSeed * 6.2831853);
         float rotAngle = uTime * rotSpeed * rotDir + wobble + vSeed * 6.2831853;
         float rc = cos(rotAngle);
         float rs = sin(rotAngle);
