@@ -143,9 +143,9 @@ function maybeCheckClear(dt: number): void {
   }
 }
 
-/** クリア演出を呼び出す。residue を画像化してから ceremony を開く */
+/** クリア演出を呼び出す。residue を黒背景で画像化してから ceremony を開く */
 function onClear(): void {
-  const dataUrl = residueCanvas.toDataURL("image/png");
+  const dataUrl = residue.toDataURL();
   const fileName = buildFileName();
   showClearCeremony(dataUrl, {
     onSave: () => saveImage(dataUrl, fileName),

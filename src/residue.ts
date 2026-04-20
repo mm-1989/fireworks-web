@@ -37,6 +37,11 @@ export interface ResidueLayer {
   setMask(mask: HTMLCanvasElement | null): void;
   /** 焼き付けを全消去 */
   clear(): void;
+  /**
+   * 現在の焼き付け結果を黒背景で合成した PNG data URL を返す。
+   * canvas 自体は透過のため、保存画像で夜空の黒が欲しい場合はこちらを使う。
+   */
+  toDataURL(): string;
 }
 
 export function createResidueLayer(
@@ -183,7 +188,25 @@ export function createResidueLayer(
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  return { stampBurst, stampPoint, computeFillRate, setMask, clear };
+  function toDataURL(): string {
+    const out = document.createElement("canvas");
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const outCtx = requireCtx(out);
+    outCtx.fillStyle = "#000";
+    outCtx.fillRect(0, 0, out.width, out.height);
+    outCtx.drawImage(canvas, 0, 0);
+    return out.toDataURL("image/png");
+  }
+
+  return {
+    stampBurst,
+    stampPoint,
+    computeFillRate,
+    setMask,
+    clear,
+    toDataURL,
+  };
 }
 
 /**
