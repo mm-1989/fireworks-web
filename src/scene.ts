@@ -38,6 +38,12 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
     powerPreference: "high-performance",
   });
   renderer.setClearColor(0x000000, 0);
+  // 粒子を AdditiveBlending で重ねると輝度が簡単に 1 を超えるため、最終段階で
+  // トーンマッピング (ACESFilmic) を入れて白飛びを抑える。
+  // exposure を 1 より下げて重なり時の飽和余地を作る。OutputPass がこの設定を使って
+  // 最終 LDR 化する。
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.65;
   applyViewportSize(renderer);
 
   const resizeListeners: Array<(w: number, h: number) => void> = [];
