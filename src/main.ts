@@ -145,6 +145,8 @@ function maybeCheckClear(dt: number): void {
 
 /** クリア演出を呼び出す。residue を黒背景で画像化してから ceremony を開く */
 function onClear(): void {
+  // 押下中にクリアに達した場合、インジケータが画面に残るので明示的に隠す
+  chargeIndicator.hide();
   const dataUrl = residue.toDataURL();
   const fileName = buildFileName();
   showClearCeremony(dataUrl, {
