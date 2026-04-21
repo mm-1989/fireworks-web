@@ -54,7 +54,6 @@ export function createBurst(
     blending: theme.blending,
     depthWrite: false,
   });
-  applyAlphaSafeBlending(material);
   // GPU 積分パッチ → sparkle パッチの順で適用。sparkle 側が onBeforeCompile を
   // chain 構造で連結するため、先に設定したパッチは prior として呼ばれる。
   applyBurstIntegrationPatch(material, now, theme.gravity);
@@ -145,22 +144,6 @@ export function disposeBurst(burst: Burst, scene: THREE.Scene): void {
 }
 
 /**
- * Additive 系の blending は alpha チャネルも src.a で累積し、sprite quad の α 分布
- * (中央高・角 0) が framebuffer に残る。ブラウザコンポジタが透過 canvas として
- * 下の residue に合成するとき、矩形境界が透かしとして見えてしまう。
- * CustomBlending で color は加算維持、alpha は書き込まず dst をそのまま保つ。
- */
-function applyAlphaSafeBlending(material: THREE.PointsMaterial): void {
-  material.blending = THREE.CustomBlending;
-  material.blendSrc = THREE.SrcAlphaFactor;
-  material.blendDst = THREE.OneFactor;
-  material.blendEquation = THREE.AddEquation;
-  material.blendSrcAlpha = THREE.ZeroFactor;
-  material.blendDstAlpha = THREE.OneFactor;
-  material.blendEquationAlpha = THREE.AddEquation;
-}
-
-/**
  * PointsMaterial の頂点シェーダに burst 積分を注入する。JS で毎フレーム position を
  * 書き戻す代わりに、GPU が以下の analytic 式で現在位置を計算する:
  *
@@ -201,6 +184,11 @@ float tBurst = uTime - uBornTime;
 transformed = position + aVelocity * tBurst + vec3(0.0, uGravity * 0.5 * tBurst * tBurst, 0.0);`,
       );
   };
+  // Three.js デフォルトの customProgramCacheKey は onBeforeCompile.toString() だが、
+  // applySparklePatch の wrapper 関数が全 sparkle 材料で同一本体なため、
+  // burst 積分パッチ入りの program が他 (chargeAura 等) とキャッシュ共有され
+  // begin_vertex 置換が効かなくなる。burst 固有キーで分離する。
+  material.customProgramCacheKey = () => "burst-integration-v1";
 }
 
 function fillInitialState(
