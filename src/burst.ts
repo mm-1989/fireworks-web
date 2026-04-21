@@ -234,7 +234,7 @@ function resolveParticleColor(target: THREE.Color, theme: BurstTheme): void {
     target.setHSL(
       range.hueMin + Math.random() * (range.hueMax - range.hueMin),
       1.0,
-      0.65 + Math.random() * 0.3,
+      0.50 + Math.random() * 0.2,
     );
   }
 }

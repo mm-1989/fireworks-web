@@ -46,8 +46,9 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
   // 最終 LDR 化する。
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   // チャージ全開で粒子が大量に重なると ACES でも圧縮しきれず白飛びするため、
-  // 露出を控えめに落として飽和余地を広げる。
-  renderer.toneMappingExposure = 0.55;
+  // 露出を控えめに落として飽和余地を広げる。粒子側明度 (themes HSL L) を下げた分
+  // 露出は少し戻して単粒子の見栄えを保つ。
+  renderer.toneMappingExposure = 0.7;
   applyViewportSize(renderer);
 
   const resizeListeners: Array<(w: number, h: number) => void> = [];

@@ -31,9 +31,9 @@ export const BLOOM_RADIUS = 0.45;
  * Tier 別の bloom 強度。内部的に 3x 倍率がかかる (UnrealBloomPass 仕様) ので
  * 体感の強さは 3 倍で考えるとよい。
  */
-export const BLOOM_STRENGTH_LOW = 0.18;
-export const BLOOM_STRENGTH_MID = 0.28;
-export const BLOOM_STRENGTH_HIGH = 0.38;
+export const BLOOM_STRENGTH_LOW = 0.13;
+export const BLOOM_STRENGTH_MID = 0.2;
+export const BLOOM_STRENGTH_HIGH = 0.27;
 
 // ---- Charge (長押しチャージ) ----
 /** 1 段階あたりの保持時間 (ms)。10 段階で 1500ms = 最大溜め */
