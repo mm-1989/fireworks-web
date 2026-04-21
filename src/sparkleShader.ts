@@ -52,6 +52,9 @@ export function applySparklePatch(material: THREE.PointsMaterial): void {
       // map_particle_fragment を差し替え、gl_PointCoord を粒子ごとの角度で回す。
       // 角速度・方向を seed で散らすことで、粒子が各自のペースで自然に回る
       // (= 慣性を感じるばらけ)。低周波 wobble を加えてわずかに揺らぎを与える。
+      // さらに低周波 scalePulse で UV 中心方向への拡縮を入れ、十字が呼吸する。
+      //  - scalePulse < 1.0 → 中心寄りをサンプル = テクスチャ拡大 (十字が伸びる)
+      //  - scalePulse > 1.0 → 端寄りをサンプル = テクスチャ縮小 (十字が引っ込む)
       // 回転後の UV が [0,1] を超えると clamp-to-edge で端 (alpha=0) を拾うが、
       // glow テクスチャ自体が縁で透明なので穴は出ない。
       .replace(
@@ -63,7 +66,9 @@ export function applySparklePatch(material: THREE.PointsMaterial): void {
         float rotAngle = uTime * rotSpeed * rotDir + wobble + vSeed * 6.2831853;
         float rc = cos(rotAngle);
         float rs = sin(rotAngle);
-        vec2 rotCoord = mat2(rc, -rs, rs, rc) * (gl_PointCoord - 0.5) + 0.5;
+        float scalePulse = 1.0 + 0.18 * sin(uTime * 2.8 + vSeed * 6.2831853 + 1.3);
+        vec2 centered = gl_PointCoord - 0.5;
+        vec2 rotCoord = (mat2(rc, -rs, rs, rc) * centered) * scalePulse + 0.5;
         #if defined( USE_MAP ) || defined( USE_ALPHAMAP )
           vec2 uv = ( uvTransform * vec3( rotCoord.x, 1.0 - rotCoord.y, 1.0 ) ).xy;
         #endif
