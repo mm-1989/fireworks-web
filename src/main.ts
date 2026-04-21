@@ -28,6 +28,7 @@ import { bindPointerGesture } from "./input";
 import { detectPerformanceTier } from "./performanceTier";
 import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
+import { createResidueSparkles } from "./residueSparkles";
 import { createSceneContext } from "./scene";
 import { sparkleUniforms } from "./sparkleShader";
 import { registerServiceWorker } from "./serviceWorker";
@@ -62,6 +63,12 @@ const postFx = createPostFx(renderer, scene, camera, perf);
 sceneCtx.onResize((w, h) => postFx.setSize(w, h));
 const themePicker = createThemePicker(glowTexture, perf);
 const residue = createResidueLayer(residueCanvas, camera);
+const residueSparkles = createResidueSparkles(
+  scene,
+  glowTexture,
+  camera,
+  residueCanvas,
+);
 const debugBadge = mountDebugBadge(perf);
 const chargeIndicator = createChargeIndicator();
 
@@ -96,6 +103,7 @@ function animate(): void {
   }
 
   chargeAura?.update(dt);
+  residueSparkles.update(dt);
 
   maybeCheckClear(dt);
   postFx.render();

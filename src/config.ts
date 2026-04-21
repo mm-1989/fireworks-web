@@ -46,6 +46,25 @@ export const CHARGE_AURA_OUTER_R = 5;
 /** 外周ジッタ。各粒子の spawn 半径は OUTER_R..OUTER_R+JITTER */
 export const CHARGE_AURA_OUTER_R_JITTER = 2;
 
+// ---- Residue sparkle (焼き付けの上で常時キラキラする overlay) ----
+/** 同時に生きている sparkle 粒子の上限 (スロット数) */
+export const RESIDUE_SPARKLE_MAX = 100;
+/** sparkle 寿命の乱数下限/上限 (秒)。粒子ごとに区間内でランダム */
+export const RESIDUE_SPARKLE_LIFE_MIN = 0.7;
+export const RESIDUE_SPARKLE_LIFE_MAX = 1.6;
+/** residue の明度マップを再取得する周期 (秒) */
+export const RESIDUE_SPARKLE_MAP_REFRESH_SEC = 0.3;
+/** 低解像度サンプル (正方形)。大きいほど細かく spawn 位置が拾えるが getImageData コスト増 */
+export const RESIDUE_SPARKLE_SAMPLE_SIZE = 64;
+/** 明部判定の閾値 (0..255)。(r+g+b)/3 がこの値以上のピクセルを spawn 候補に入れる */
+export const RESIDUE_SPARKLE_BRIGHT_THRESHOLD = 40;
+/** 粒子サイズ (world)。小粒で多数がキラキラ感を出す */
+export const RESIDUE_SPARKLE_SIZE = 1.1;
+/** spawn 時にサンプル中心から world 単位でぶらす距離 */
+export const RESIDUE_SPARKLE_JITTER_WORLD = 0.8;
+/** 死んだスロットが毎フレーム再生成を試みる確率。低いほど点滅がまばらになる */
+export const RESIDUE_SPARKLE_RESPAWN_CHANCE = 0.12;
+
 // ---- Shooting star (スワイプで出る流れ星) ----
 export const SHOOTING_STAR_HEAD_SIZE = 4.0;
 export const SHOOTING_STAR_TRAIL_SIZE = 2.2;
