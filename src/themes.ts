@@ -102,7 +102,7 @@ function createGlowTheme(
 ): BurstTheme {
   return {
     texture: glowTexture,
-    particleCount: Math.round(600 * perf.scale),
+    particleCount: Math.round(400 * perf.scale),
     particleSize: 3.2,
     speedMin: 14,
     speedMax: 32,

@@ -5,11 +5,17 @@ import type { BurstTheme } from "./themes";
 
 /**
  * 爆発時の粒子群。
- * BufferGeometry の position 属性と並列な velocities 配列を毎フレーム積分する。
+ *
+ * 位置計算は頂点シェーダで実行する (GPU 積分)。JS 側は velocities と origin だけ保持し、
+ * stamp 時に JS 側で同じ式を評価して現在位置を得る (computeBurstPositions)。
+ * これにより毎フレームの for ループと position バッファの GPU 再アップロードを廃止。
  */
 export interface Burst {
   points: THREE.Points;
+  /** 各粒子の初速。(count*3) floats。GPU attribute にもセット済み */
   velocities: Float32Array;
+  /** 爆発原点。GPU では attribute position (全要素同値) に入っている */
+  origin: THREE.Vector3;
   born: number;
   gravity: number;
   lifetime: number;
@@ -36,6 +42,7 @@ export function createBurst(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("aVelocity", new THREE.BufferAttribute(velocities, 3));
   geometry.setAttribute("seed", createSeedAttribute(count));
 
   const material = new THREE.PointsMaterial({
@@ -47,14 +54,23 @@ export function createBurst(
     blending: theme.blending,
     depthWrite: false,
   });
+  applyAlphaSafeBlending(material);
+  // GPU 積分パッチ → sparkle パッチの順で適用。sparkle 側が onBeforeCompile を
+  // chain 構造で連結するため、先に設定したパッチは prior として呼ばれる。
+  applyBurstIntegrationPatch(material, now, theme.gravity);
   applySparklePatch(material);
 
   const points = new THREE.Points(geometry, material);
+  // 頂点シェーダで実位置を動かすため、BufferGeometry.boundingSphere は origin 1 点を
+  // 指したままで実際の描画範囲と一致しない。frustum culling を切らないと
+  // 広がった粒子がカメラ外判定で落とされる。
+  points.frustumCulled = false;
   scene.add(points);
 
   return {
     points,
     velocities,
+    origin: new THREE.Vector3(x, y, z),
     born: now,
     gravity: theme.gravity,
     lifetime: theme.lifetime,
@@ -65,22 +81,22 @@ export function createBurst(
 
 /**
  * @param onStampReady burst の寿命比率が STAMP_LIFE_RATIO を跨いだフレームで 1 回だけ呼ばれる。
- *                    残留レイヤへの焼き付けなどに使う
+ *                    残留レイヤへの焼き付けなどに使う。`now` は残留側の位置再計算に使う
  * @returns true なら寿命切れで削除済み
  */
 export function updateBurst(
   burst: Burst,
   scene: THREE.Scene,
-  dt: number,
+  _dt: number,
   now: number,
-  onStampReady?: (burst: Burst) => void,
+  onStampReady?: (burst: Burst, now: number) => void,
 ): boolean {
   const age = now - burst.born;
   const lifeRatio = age / burst.lifetime;
 
   if (!burst.stamped && lifeRatio >= STAMP_LIFE_RATIO) {
     burst.stamped = true;
-    onStampReady?.(burst);
+    onStampReady?.(burst, now);
   }
 
   if (lifeRatio >= 1) {
@@ -88,22 +104,37 @@ export function updateBurst(
     return true;
   }
 
-  const positions = burst.points.geometry.attributes.position
-    .array as Float32Array;
-  const velocities = burst.velocities;
-
-  for (let i = 0; i < burst.count; i++) {
-    velocities[i * 3 + 1] += burst.gravity * dt;
-    positions[i * 3 + 0] += velocities[i * 3 + 0] * dt;
-    positions[i * 3 + 1] += velocities[i * 3 + 1] * dt;
-    positions[i * 3 + 2] += velocities[i * 3 + 2] * dt;
-  }
-  burst.points.geometry.attributes.position.needsUpdate = true;
-
-  // 寿命の二次関数で不透明度を減衰 (最後の方で一気に消える方が花火らしい)
+  // 位置積分は頂点シェーダで実行 (sparkleUniforms.uTime + uBornTime)。
+  // JS 側は寿命に応じた不透明度の減衰のみ行う。
   const mat = burst.points.material as THREE.PointsMaterial;
   mat.opacity = Math.max(0, 1 - lifeRatio * lifeRatio);
   return false;
+}
+
+/**
+ * JS 側で現在位置を計算する。GPU シェーダと同じ式なので結果が一致する。
+ * stamp / force-stamp 時に consumer (residue の焼き付け, residueCrosses の spawn) から
+ * 呼び出される。burst あたり 1 度だけ評価するので for ループが残っていても軽い。
+ */
+export function computeBurstPositions(
+  burst: Burst,
+  now: number,
+  out?: Float32Array,
+): Float32Array {
+  const t = now - burst.born;
+  const count = burst.count;
+  const positions = out ?? new Float32Array(count * 3);
+  const vel = burst.velocities;
+  const ox = burst.origin.x;
+  const oy = burst.origin.y;
+  const oz = burst.origin.z;
+  const halfGt2 = 0.5 * burst.gravity * t * t;
+  for (let i = 0; i < count; i++) {
+    positions[i * 3 + 0] = ox + vel[i * 3 + 0] * t;
+    positions[i * 3 + 1] = oy + vel[i * 3 + 1] * t + halfGt2;
+    positions[i * 3 + 2] = oz + vel[i * 3 + 2] * t;
+  }
+  return positions;
 }
 
 /** burst の GPU リソースを解放しシーンから取り除く */
@@ -111,6 +142,65 @@ export function disposeBurst(burst: Burst, scene: THREE.Scene): void {
   scene.remove(burst.points);
   burst.points.geometry.dispose();
   (burst.points.material as THREE.Material).dispose();
+}
+
+/**
+ * Additive 系の blending は alpha チャネルも src.a で累積し、sprite quad の α 分布
+ * (中央高・角 0) が framebuffer に残る。ブラウザコンポジタが透過 canvas として
+ * 下の residue に合成するとき、矩形境界が透かしとして見えてしまう。
+ * CustomBlending で color は加算維持、alpha は書き込まず dst をそのまま保つ。
+ */
+function applyAlphaSafeBlending(material: THREE.PointsMaterial): void {
+  material.blending = THREE.CustomBlending;
+  material.blendSrc = THREE.SrcAlphaFactor;
+  material.blendDst = THREE.OneFactor;
+  material.blendEquation = THREE.AddEquation;
+  material.blendSrcAlpha = THREE.ZeroFactor;
+  material.blendDstAlpha = THREE.OneFactor;
+  material.blendEquationAlpha = THREE.AddEquation;
+}
+
+/**
+ * PointsMaterial の頂点シェーダに burst 積分を注入する。JS で毎フレーム position を
+ * 書き戻す代わりに、GPU が以下の analytic 式で現在位置を計算する:
+ *
+ *   transformed = origin + aVelocity * t + 0.5 * g * t^2 * yhat
+ *   t = uTime - uBornTime
+ *
+ * 前提:
+ *  - geometry に `aVelocity` (vec3) と `position` (= origin, 全頂点同値) が設定済
+ *  - uTime は sparkleUniforms 経由で animate ループが毎フレーム更新する
+ *  - uBornTime / uGravity は material ごとに固定 (burst 生成時に確定)
+ *
+ * 呼び出し順序: applySparklePatch より先に呼ぶこと。sparkle 側が onBeforeCompile を
+ * prior として chain するため、先に設定したパッチが先に実行される。
+ */
+function applyBurstIntegrationPatch(
+  material: THREE.PointsMaterial,
+  bornTime: number,
+  gravity: number,
+): void {
+  const bornUniform = { value: bornTime };
+  const gravityUniform = { value: gravity };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uBornTime = bornUniform;
+    shader.uniforms.uGravity = gravityUniform;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "void main() {",
+        `attribute vec3 aVelocity;
+uniform float uBornTime;
+uniform float uGravity;
+uniform float uTime;
+void main() {`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+float tBurst = uTime - uBornTime;
+transformed = position + aVelocity * tBurst + vec3(0.0, uGravity * 0.5 * tBurst * tBurst, 0.0);`,
+      );
+  };
 }
 
 function fillInitialState(

@@ -27,12 +27,12 @@ export function detectPerformanceTier(): TierInfo {
   const memoryGB = (navigator as NavigatorWithDeviceMemory).deviceMemory ?? null;
 
   let tier: PerformanceTier;
-  if (cores <= 2 || (memoryGB !== null && memoryGB <= 2)) {
-    tier = "low";
-  } else if (cores >= 6 && (memoryGB === null || memoryGB >= 4)) {
+  if (cores >= 8 && (memoryGB === null || memoryGB >= 6)) {
     tier = "high";
-  } else {
+  } else if (cores >= 4 && (memoryGB === null || memoryGB >= 3)) {
     tier = "mid";
+  } else {
+    tier = "low";
   }
 
   const scale = tier === "low" ? 0.4 : tier === "mid" ? 0.7 : 1.0;

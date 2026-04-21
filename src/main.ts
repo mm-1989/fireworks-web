@@ -22,12 +22,13 @@ import {
   SWIPE_STARS_PER_PX,
 } from "./config";
 import { mountDebugBadge } from "./debugBadge";
-import { createGlowTexture } from "./glowTexture";
+import { createCrossRayTexture, createGlowTexture } from "./glowTexture";
 import { buildFileName, saveImage } from "./imageExport";
 import { bindPointerGesture } from "./input";
 import { detectPerformanceTier } from "./performanceTier";
 import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
+import { createResidueCrosses } from "./residueCrosses";
 import { createResidueSparkles } from "./residueSparkles";
 import { createSceneContext } from "./scene";
 import { sparkleUniforms } from "./sparkleShader";
@@ -57,12 +58,14 @@ const residueCanvas: HTMLCanvasElement = residueCanvasEl;
 const sceneCtx = createSceneContext(sceneCanvas);
 const { scene, camera, renderer } = sceneCtx;
 const glowTexture = createGlowTexture();
+const crossRayTexture = createCrossRayTexture();
 const sound = new SoundManager();
 const perf = detectPerformanceTier();
 const postFx = createPostFx(renderer, scene, camera, perf);
 sceneCtx.onResize((w, h) => postFx.setSize(w, h));
 const themePicker = createThemePicker(glowTexture, perf);
-const residue = createResidueLayer(residueCanvas, camera);
+const residueCrosses = createResidueCrosses(scene, crossRayTexture);
+const residue = createResidueLayer(residueCanvas, camera, residueCrosses);
 const residueSparkles = createResidueSparkles(
   scene,
   glowTexture,
@@ -120,7 +123,7 @@ function spawnBurst(step: number, x: number, y: number, z: number, now: number):
     if (oldest) {
       if (!oldest.stamped) {
         oldest.stamped = true;
-        residue.stampBurst(oldest);
+        residue.stampBurst(oldest, now);
       }
       disposeBurst(oldest, scene);
     }
@@ -167,7 +170,10 @@ function onClear(): void {
   // 押下中にクリアに達した場合、インジケータ/aura が画面に残るので明示的に破棄する
   chargeIndicator.hide();
   disposeChargeAura();
-  const dataUrl = residue.toDataURL();
+  // residue 2D canvas に加え、GL scene (residueCrosses の十字含む) もスナップ。
+  // preserveDrawingBuffer=false のため、同 tick 内で render → toDataURL を呼ぶ。
+  postFx.render();
+  const dataUrl = residue.toDataURL(sceneCanvas);
   const fileName = buildFileName();
   showClearCeremony(dataUrl, {
     onSave: () => saveImage(dataUrl, fileName),

@@ -8,7 +8,12 @@ export const CAMERA_FOV = 60;
 export const CAMERA_NEAR = 0.1;
 export const CAMERA_FAR = 1000;
 export const CAMERA_Z = 50;
-export const MAX_PIXEL_RATIO = 2;
+/**
+ * 端末 pixelRatio の上限。retina (2 以上) で 1 引き下げると pixel 数が 44% 減で
+ * fragment/帯域コストを大きく下げられる。花火は細部よりにじみ重視なので、
+ * 1.5 程度で細部精度を維持しつつモバイル負荷を抑える。
+ */
+export const MAX_PIXEL_RATIO = 1.5;
 
 // ---- Animation loop ----
 export const DT_MAX = 0.05; // フレーム遅延時の異常な速度倍加を防ぐ上限
@@ -68,7 +73,7 @@ export const RESIDUE_SPARKLE_RESPAWN_CHANCE = 0.12;
 // ---- Shooting star (スワイプで出る流れ星) ----
 export const SHOOTING_STAR_HEAD_SIZE = 4.0;
 export const SHOOTING_STAR_TRAIL_SIZE = 2.2;
-export const SHOOTING_STAR_TRAIL_MAX = 30;
+export const SHOOTING_STAR_TRAIL_MAX = 20;
 export const SHOOTING_STAR_TRAIL_FADE_PER_SEC = 4.0;
 export const SHOOTING_STAR_LIFETIME = 0.8;
 /** residue に焼き付けるときの world 単位の見かけサイズ */
@@ -87,6 +92,25 @@ export const SHOOTING_STARS_MAX_CONCURRENT = 40;
 /** スワイプ速度サンプルを取る期間 (ms)。長すぎると古い動きが混じり、短すぎるとノイジー */
 export const SWIPE_VELOCITY_WINDOW_MS = 150;
 
+// ---- Residue cross rays (焼き付けと並走して回転/拡縮する十字 ray) ----
+/**
+ * 同時に維持する十字粒子の上限。円環バッファで古いものから上書き。
+ * burst 粒子 1 個につき 1 回 addAt するわけではなく SUB_SAMPLE で間引くので、
+ * このキャパでも数十バーストぶんの痕跡が残せる。
+ */
+export const RESIDUE_CROSS_MAX = 1500;
+/**
+ * 十字粒子の world 単位サイズ (PointsMaterial.size)。焼き付け core 半径より一回り
+ * 大きめに取り、十字の腕が residue より外側に伸びて視認できるようにする。
+ * これより小さいと arm が core に埋もれて見えづらい。
+ */
+export const RESIDUE_CROSS_SIZE = 10.0;
+/**
+ * burst stamp 時に何粒子おきに十字を spawn するか。1 なら全粒子、4 なら 1/4。
+ * 間引くことで MAX スロットをすぐに使い切らず、長時間の焼き付け痕跡が残る。
+ */
+export const RESIDUE_CROSS_BURST_SUB_SAMPLE = 10;
+
 // ---- Residue (焼き付け背景) ----
 /** 1 粒子当たりの焼き付け不透明度。同じ場所に重ねるほど濃くなる */
 export const RESIDUE_ALPHA = 0.5;
@@ -95,7 +119,7 @@ export const RESIDUE_RADIUS_SCALE = 1.0;
 /** burst の寿命比率がこの値を跨いだ瞬間に residue へ焼き付ける */
 export const STAMP_LIFE_RATIO = 0.7;
 /** 同時に存在できる burst の上限。溢れた最古の burst は即時焼き付け+破棄 */
-export const MAX_CONCURRENT_BURSTS = 8;
+export const MAX_CONCURRENT_BURSTS = 5;
 
 // ---- Clear 判定 ----
 /**

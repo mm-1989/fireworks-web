@@ -6,7 +6,6 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import {
   BLOOM_RADIUS,
   BLOOM_STRENGTH_HIGH,
-  BLOOM_STRENGTH_LOW,
   BLOOM_STRENGTH_MID,
   BLOOM_THRESHOLD,
 } from "./config";
@@ -37,19 +36,20 @@ export function createPostFx(
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
-  const strength =
-    perf.tier === "low"
-      ? BLOOM_STRENGTH_LOW
-      : perf.tier === "mid"
-        ? BLOOM_STRENGTH_MID
-        : BLOOM_STRENGTH_HIGH;
-  const bloom = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    strength,
-    BLOOM_RADIUS,
-    BLOOM_THRESHOLD,
-  );
-  composer.addPass(bloom);
+  // low tier は bloom をスキップ。UnrealBloomPass は 5 段 downsample/upsample で
+  // モバイル最大のコスト源。花火の「らしさ」は落ちるがフレームレート優先。
+  let bloom: UnrealBloomPass | null = null;
+  if (perf.tier !== "low") {
+    const strength =
+      perf.tier === "mid" ? BLOOM_STRENGTH_MID : BLOOM_STRENGTH_HIGH;
+    bloom = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      strength,
+      BLOOM_RADIUS,
+      BLOOM_THRESHOLD,
+    );
+    composer.addPass(bloom);
+  }
 
   // sRGB/トーンマップ整形。これを最後に入れないと色が浅くなる
   composer.addPass(new OutputPass());
@@ -68,13 +68,17 @@ export function createPostFx(
 
 function applySize(
   composer: EffectComposer,
-  bloom: UnrealBloomPass,
+  bloom: UnrealBloomPass | null,
   width: number,
   height: number,
   renderer: THREE.WebGLRenderer,
 ): void {
-  const pr = renderer.getPixelRatio();
+  // Bloom は多段 downsample/upsample で pixel 数に線形以上のコスト。
+  // retina で device pixel 100% を走らせると iPhone で破綻する。
+  // CSS pixel 100% (pr=1) にクランプすると bloom 処理量が 1/4 になり、
+  // 元々ぼかす処理なので見た目のソフト化はほぼ気にならない。
+  const pr = Math.min(renderer.getPixelRatio(), 1);
   composer.setPixelRatio(pr);
   composer.setSize(width, height);
-  bloom.setSize(width, height);
+  bloom?.setSize(width, height);
 }

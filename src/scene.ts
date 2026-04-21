@@ -33,7 +33,9 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    // bloom / OutputPass がエッジを滲ませるため MSAA はほぼ冗長。
+    // mobile の fragment/帯域コスト削減を優先して切る。
+    antialias: false,
     alpha: true,
     powerPreference: "high-performance",
   });

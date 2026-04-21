@@ -1,11 +1,13 @@
 import * as THREE from "three";
-import type { Burst } from "./burst";
+import { type Burst, computeBurstPositions } from "./burst";
 import {
   CLEAR_BRIGHT_THRESHOLD,
   CLEAR_SAMPLE_SIZE,
   RESIDUE_ALPHA,
+  RESIDUE_CROSS_BURST_SUB_SAMPLE,
   RESIDUE_RADIUS_SCALE,
 } from "./config";
+import type { ResidueCrosses } from "./residueCrosses";
 
 /**
  * 花火粒子を焼き付けていく背景レイヤ。Scene の下に敷いた 2D canvas に直接描画する。
@@ -20,8 +22,11 @@ import {
  *  - ウィンドウリサイズで canvas は再初期化され、既存の焼き付けは消える
  */
 export interface ResidueLayer {
-  /** burst の全粒子を現在位置で焼き付ける */
-  stampBurst(burst: Burst): void;
+  /**
+   * burst の全粒子を現在位置で焼き付ける。位置は JS 側で (now - burst.born) から
+   * 再計算する (GPU 積分と同じ式)。`now` は呼び出し元の game clock.elapsedTime。
+   */
+  stampBurst(burst: Burst, now: number): void;
   /**
    * 1 点を焼き付ける。shooting star の軌跡を毎フレーム残す用途で使う。
    * `particleSize` は world 単位。camera 投影で画面 px 半径に換算される。
@@ -40,13 +45,17 @@ export interface ResidueLayer {
   /**
    * 現在の焼き付け結果を黒背景で合成した PNG data URL を返す。
    * canvas 自体は透過のため、保存画像で夜空の黒が欲しい場合はこちらを使う。
+   * overlayCanvas を渡すと、その canvas (通常は WebGL scene) を residue の上に
+   * 重ねてから書き出す。呼び出し直前に renderer.render() を同 tick 内で呼んで
+   * drawing buffer を確保しておくこと (preserveDrawingBuffer=false のため)。
    */
-  toDataURL(): string;
+  toDataURL(overlayCanvas?: HTMLCanvasElement): string;
 }
 
 export function createResidueLayer(
   canvas: HTMLCanvasElement,
   camera: THREE.PerspectiveCamera,
+  crosses: ResidueCrosses | null = null,
 ): ResidueLayer {
   const ctx: CanvasRenderingContext2D = requireCtx(canvas);
 
@@ -68,51 +77,18 @@ export function createResidueLayer(
   const projected = new THREE.Vector3();
 
   /**
-   * 指定位置に star-glow 形状 (中心グラデ + 十字 anamorphic ray) を 1 粒描画する。
-   * glowTexture と同じプロファイルを 2D 側でも再現し、背景の焼き付けに星型の
-   * 光芒を持たせる。呼び出し側で globalAlpha を事前設定しておくこと。
+   * 指定位置に core グラデ (中心放射) を 1 粒描画する。
+   * 十字 ray は residueCrosses (GL 粒子) が担当するので、ここでは core だけ焼く。
+   * 呼び出し側で globalAlpha を事前設定しておくこと。
    */
   function drawGlow(x: number, y: number, radius: number, rgb: string): void {
-    ctx.save();
-    ctx.translate(x, y);
-    // 粒子ごとにランダムな角度で十字を傾ける。同じ方向に揃うと背景が縦横の
-    // 罫線みたいに見えるため、stamp ごとに完全に独立した角度でばらけさせる
-    ctx.rotate(Math.random() * Math.PI * 2);
-    // Core (従来プロファイル。回転しても放射対称なので見た目不変)
-    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    const core = ctx.createRadialGradient(x, y, 0, x, y, radius);
     core.addColorStop(0.0, `rgba(${rgb},1)`);
     core.addColorStop(0.15, `rgba(${rgb},0.85)`);
     core.addColorStop(0.4, `rgba(${rgb},0.3)`);
     core.addColorStop(1.0, `rgba(${rgb},0)`);
     ctx.fillStyle = core;
-    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
-    // 水平・垂直の anamorphic ray。scale で片軸を潰して細長い光芒にする
-    drawScaledRay(radius * 1.5, 1, 0.08, rgb, 0.45);
-    drawScaledRay(radius * 1.5, 0.08, 1, rgb, 0.45);
-    ctx.restore();
-  }
-
-  /**
-   * 現在の座標系を sx/sy でスケールしてから中心放射グラデを塗る。
-   * save/translate 済み前提 (drawGlow から呼ぶ)。
-   */
-  function drawScaledRay(
-    len: number,
-    sx: number,
-    sy: number,
-    rgb: string,
-    alpha: number,
-  ): void {
-    ctx.save();
-    ctx.scale(sx, sy);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, len);
-    g.addColorStop(0.0, `rgba(${rgb},${alpha.toFixed(3)})`);
-    g.addColorStop(0.2, `rgba(${rgb},${(alpha * 0.5).toFixed(3)})`);
-    g.addColorStop(0.55, `rgba(${rgb},${(alpha * 0.12).toFixed(3)})`);
-    g.addColorStop(1.0, `rgba(${rgb},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(-len, -len, len * 2, len * 2);
-    ctx.restore();
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
   function projectToCanvas(worldPos: THREE.Vector3): { x: number; y: number } | null {
@@ -124,9 +100,18 @@ export function createResidueLayer(
     };
   }
 
-  function stampBurst(burst: Burst): void {
-    const positions = burst.points.geometry.attributes.position
-      .array as Float32Array;
+  const worldTmp = new THREE.Vector3();
+  const colorTmp = new THREE.Color();
+
+  // GPU で位置を持つので、stamp 時に JS 側で同じ式を評価する。burst ごとに配列を
+  // 毎回確保すると GC pressure になるので、再利用バッファ (必要時のみ grow) を持つ。
+  let burstPosBuffer = new Float32Array(0);
+
+  function stampBurst(burst: Burst, now: number): void {
+    if (burstPosBuffer.length < burst.count * 3) {
+      burstPosBuffer = new Float32Array(burst.count * 3);
+    }
+    const positions = computeBurstPositions(burst, now, burstPosBuffer);
     const colors = burst.points.geometry.attributes.color.array as Float32Array;
     const material = burst.points.material as THREE.PointsMaterial;
     const radius =
@@ -135,20 +120,27 @@ export function createResidueLayer(
 
     ctx.globalAlpha = RESIDUE_ALPHA;
     for (let i = 0; i < burst.count; i++) {
-      projected.set(
-        positions[i * 3],
-        positions[i * 3 + 1],
-        positions[i * 3 + 2],
-      );
+      const wx = positions[i * 3];
+      const wy = positions[i * 3 + 1];
+      const wz = positions[i * 3 + 2];
+      projected.set(wx, wy, wz);
       projected.project(camera);
       if (projected.z < -1 || projected.z > 1) continue;
 
       const x = (projected.x + 1) * 0.5 * canvas.width;
       const y = (-projected.y + 1) * 0.5 * canvas.height;
-      const r = Math.round(colors[i * 3] * 255);
-      const g = Math.round(colors[i * 3 + 1] * 255);
-      const b = Math.round(colors[i * 3 + 2] * 255);
+      const cr = colors[i * 3];
+      const cg = colors[i * 3 + 1];
+      const cb = colors[i * 3 + 2];
+      const r = Math.round(cr * 255);
+      const g = Math.round(cg * 255);
+      const b = Math.round(cb * 255);
       drawGlow(x, y, radius, `${r},${g},${b}`);
+      if (crosses && i % RESIDUE_CROSS_BURST_SUB_SAMPLE === 0) {
+        worldTmp.set(wx, wy, wz);
+        colorTmp.setRGB(cr, cg, cb);
+        crosses.addAt(worldTmp, colorTmp);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -169,6 +161,7 @@ export function createResidueLayer(
     ctx.globalAlpha = RESIDUE_ALPHA;
     drawGlow(pt.x, pt.y, radius, `${r},${g},${b}`);
     ctx.globalAlpha = 1;
+    crosses?.addAt(worldPos, color);
   }
 
   function computeFillRate(): number {
@@ -220,9 +213,10 @@ export function createResidueLayer(
 
   function clear(): void {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    crosses?.clear();
   }
 
-  function toDataURL(): string {
+  function toDataURL(overlayCanvas?: HTMLCanvasElement): string {
     const out = document.createElement("canvas");
     out.width = canvas.width;
     out.height = canvas.height;
@@ -230,6 +224,11 @@ export function createResidueLayer(
     outCtx.fillStyle = "#000";
     outCtx.fillRect(0, 0, out.width, out.height);
     outCtx.drawImage(canvas, 0, 0);
+    if (overlayCanvas) {
+      // WebGL canvas の backing buffer は pixelRatio 倍の解像度を持つので
+      // 明示的に residue canvas のサイズに揃えて drawImage で縮小合成する。
+      outCtx.drawImage(overlayCanvas, 0, 0, out.width, out.height);
+    }
     return out.toDataURL("image/png");
   }
 
