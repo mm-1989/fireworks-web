@@ -5,7 +5,7 @@ import {
   CHARGE_AURA_OUTER_R_JITTER,
   CHARGE_MAX_STEPS,
 } from "./config";
-import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
+import { applySparklePatch, createSeedAttribute, sparkleUniforms } from "./sparkleShader";
 
 /**
  * 長押し中に押下位置を中心として 3D 粒子が螺旋を描いて吸い込まれていく演出。
@@ -77,27 +77,61 @@ export function createChargeAura(
   const points = new THREE.Points(geometry, material);
   scene.add(points);
 
-  // 中心に置く「コア」。step が上がるほど明るく大きくなり、MAX で脈動する。
-  // 粒子群が渦の収束点に落ちていく先を視覚化し、満チャージを分かりやすく伝える。
-  const corePositions = new Float32Array([center.x, center.y, center.z]);
-  const coreGeo = new THREE.BufferGeometry();
-  coreGeo.setAttribute("position", new THREE.BufferAttribute(corePositions, 3));
-  coreGeo.setAttribute("seed", createSeedAttribute(1));
-  const coreMat = new THREE.PointsMaterial({
-    size: 0.5,
-    map: texture,
-    color: new THREE.Color(1, 1, 1),
+  // 満チャージ演出のリング。指で中心が隠れても見えるよう、外周 OUTER_R 付近に
+  // ホワっと光るリングを出す。step == MAX に到達した瞬間に「ピカッ」と半径 0 から
+  // 外周まで一瞬で広がり (flash)、その後は外周で breathing パルスを続ける。
+  //
+  // 実装: 単一 PlaneGeometry + カスタム shader。fragment で local xy の距離を
+  // リング半径と比較し、gaussian で太さを表現する。AdditiveBlending。
+  const ringSize = (CHARGE_AURA_OUTER_R + CHARGE_AURA_OUTER_R_JITTER + 3) * 2;
+  const ringGeo = new THREE.PlaneGeometry(ringSize, ringSize);
+  const ringMat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
     depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: sparkleUniforms.uTime,
+      uRingRadius: { value: 0 },
+      uRingThickness: { value: 1 },
+      uOpacity: { value: 0 },
+      uColor: { value: new THREE.Color(1, 0.95, 0.8) },
+    },
+    vertexShader: `
+      varying vec3 vLocal;
+      void main() {
+        vLocal = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uRingRadius;
+      uniform float uRingThickness;
+      uniform float uOpacity;
+      uniform vec3 uColor;
+      varying vec3 vLocal;
+      void main() {
+        float r = length(vLocal.xy);
+        float d = (r - uRingRadius) / uRingThickness;
+        float glow = exp(-d * d * 2.0);
+        float a = glow * uOpacity;
+        gl_FragColor = vec4(uColor * a, a);
+      }
+    `,
   });
-  applySparklePatch(coreMat);
-  const core = new THREE.Points(coreGeo, coreMat);
-  scene.add(core);
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.copy(center);
+  scene.add(ring);
 
   let currentStep = 0;
   let elapsed = 0;
+  /** 満チャージ到達後 true。flash 完了を待って steady ring を出す */
+  let reachedMax = false;
+  /** flash 経過 (0..1 ramp)。reachedMax 遷移時に 0 へリセットして開始 */
+  let flashProgress = 1; // 1 = 完了 (非 flash 状態)
+  /** flash 完了後の経過秒。breath 位相を 0 から始めるのに使う (steady 初期値を
+   *  flash 終端と一致させ、段差なく遷移する) */
+  let steadyElapsed = 0;
 
   function update(dt: number): void {
     elapsed += dt;
@@ -140,11 +174,43 @@ export function createChargeAura(
     material.size = 0.45 + t * 0.9;
     material.opacity = Math.min(1, 0.3 + t * 0.9);
 
-    // コア: step 0.3 以降で徐々に見え始め、満チャージで 12 Hz 脈動
-    const coreAppear = Math.max(0, (t - 0.3) / 0.7);
-    const pulse = t >= 0.98 ? 1 + 0.35 * Math.sin(elapsed * 12) : 1;
-    coreMat.size = (0.6 + coreAppear * 3.0) * pulse;
-    coreMat.opacity = Math.min(1, coreAppear * pulse);
+    // 満チャージ遷移の検知と flash 開始
+    if (!reachedMax && currentStep >= CHARGE_MAX_STEPS) {
+      reachedMax = true;
+      flashProgress = 0;
+    }
+
+    updateRing(dt);
+  }
+
+  /**
+   * リングの描画状態を進める。
+   *  - flash 中: 半径 0→外周 へ ease-out で膨張、opacity は 1→0.35 に落ちていく。
+   *              太さも 2.0→0.6 に収束 → 最終フレームは steady と同じ値。
+   *  - flash 完了後: 外周で太さ・opacity を breathing (1.6 Hz) でゆらす (ホワホワ)。
+   *  - 未到達: opacity=0 で不可視。
+   */
+  function updateRing(dt: number): void {
+    if (!reachedMax) {
+      ringMat.uniforms.uOpacity.value = 0;
+      return;
+    }
+    const steadyR = CHARGE_AURA_OUTER_R + 0.5;
+    if (flashProgress < 1) {
+      flashProgress = Math.min(1, flashProgress + dt / 0.4); // 0.4s flash
+      const f = flashProgress;
+      const eased = 1 - (1 - f) * (1 - f); // ease-out
+      ringMat.uniforms.uRingRadius.value = eased * steadyR;
+      ringMat.uniforms.uRingThickness.value = 2.0 - eased * 1.4; // 2.0→0.6
+      ringMat.uniforms.uOpacity.value = 1 - eased * 0.65; // 1.0→0.35
+    } else {
+      // breathing: 0.6 Hz (1.67s 周期) の穏やかな吸気/呼気
+      steadyElapsed += dt;
+      const breath = Math.sin(steadyElapsed * 0.6 * Math.PI * 2);
+      ringMat.uniforms.uRingRadius.value = steadyR;
+      ringMat.uniforms.uRingThickness.value = 0.6 + 0.18 * breath;
+      ringMat.uniforms.uOpacity.value = 0.35 + 0.15 * breath;
+    }
   }
 
   function setStep(step: number): void {
@@ -153,11 +219,11 @@ export function createChargeAura(
 
   function dispose(): void {
     scene.remove(points);
-    scene.remove(core);
+    scene.remove(ring);
     geometry.dispose();
     material.dispose();
-    coreGeo.dispose();
-    coreMat.dispose();
+    ringGeo.dispose();
+    ringMat.dispose();
   }
 
   return { update, setStep, dispose };
