@@ -92,6 +92,29 @@ export const SHOOTING_STARS_MAX_CONCURRENT = 40;
 /** スワイプ速度サンプルを取る期間 (ms)。長すぎると古い動きが混じり、短すぎるとノイジー */
 export const SWIPE_VELOCITY_WINDOW_MS = 150;
 
+// ---- Burst variation (バーストごとに乱数を引く形状ばらつき) ----
+/**
+ * 球面分布の異方性。各軸が独立に [1-AMP, 1+AMP] 倍される。
+ * 0 で完全等方、上げるほどバーストごとに楕円体にひしゃげて見える。
+ */
+export const BURST_ANISOTROPY = 0.25;
+/**
+ * 速度分布のべき乗指数の範囲。半径 r = pow(random, exp) で速度を決める。
+ *  - exp < 1 → 外側に粒子が密 (爆発感が強い)
+ *  - exp = 1 → 一様 (現状)
+ *  - exp > 1 → 中央寄りに密 (こぢんまり)
+ * バーストごとに範囲内からランダム選択する。
+ */
+export const BURST_SPEED_EXP_MIN = 0.7;
+export const BURST_SPEED_EXP_MAX = 1.6;
+/**
+ * バーストごとに全粒子へ乗る方向偏り。speedMax に対する係数 (0..1)。
+ * 風で流れたような非対称感を出す。
+ */
+export const BURST_DIRECTIONAL_BIAS = 0.12;
+/** 寿命のばらつき (±AMP)。0.15 → [0.85, 1.15] 倍 */
+export const BURST_LIFETIME_JITTER = 0.15;
+
 // ---- Residue cross rays (焼き付けと並走して回転/拡縮する十字 ray) ----
 /**
  * 同時に維持する十字粒子の上限。円環バッファで古いものから上書き。

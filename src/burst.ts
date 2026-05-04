@@ -1,5 +1,12 @@
 import * as THREE from "three";
-import { STAMP_LIFE_RATIO } from "./config";
+import {
+  BURST_ANISOTROPY,
+  BURST_DIRECTIONAL_BIAS,
+  BURST_LIFETIME_JITTER,
+  BURST_SPEED_EXP_MAX,
+  BURST_SPEED_EXP_MIN,
+  STAMP_LIFE_RATIO,
+} from "./config";
 import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
 import type { BurstTheme } from "./themes";
 
@@ -39,6 +46,12 @@ export function createBurst(
 
   fillInitialState(positions, velocities, colors, theme, x, y, z);
 
+  // バーストごとに寿命をジッタ。lifeRatio = age/lifetime に伝搬し、
+  // stamp タイミングや fade-out もこの寿命に追従する。
+  const lifetimeJitter =
+    1 + (Math.random() * 2 - 1) * BURST_LIFETIME_JITTER;
+  const actualLifetime = theme.lifetime * lifetimeJitter;
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
@@ -72,7 +85,7 @@ export function createBurst(
     origin: new THREE.Vector3(x, y, z),
     born: now,
     gravity: theme.gravity,
-    lifetime: theme.lifetime,
+    lifetime: actualLifetime,
     count,
     stamped: false,
   };
@@ -203,16 +216,39 @@ function fillInitialState(
   const count = theme.particleCount;
   const color = new THREE.Color();
 
+  // ---- バーストごとの形状ばらつき (1 度だけ計算して全粒子に適用) ----
+  // 各軸に独立スケールをかけ、球面分布を楕円体に潰す。
+  const scaleX = 1 + (Math.random() * 2 - 1) * BURST_ANISOTROPY;
+  const scaleY = 1 + (Math.random() * 2 - 1) * BURST_ANISOTROPY;
+  const scaleZ = 1 + (Math.random() * 2 - 1) * BURST_ANISOTROPY;
+  // 速度分布のべき乗指数。バーストごとに密度プロファイルが変わる。
+  const speedExp =
+    BURST_SPEED_EXP_MIN +
+    Math.random() * (BURST_SPEED_EXP_MAX - BURST_SPEED_EXP_MIN);
+  // 全粒子に乗る方向偏り。風で流された印象を出す。
+  const biasMag =
+    Math.random() * Math.random() * BURST_DIRECTIONAL_BIAS * theme.speedMax;
+  const biasTheta = Math.random() * Math.PI * 2;
+  const biasPhi = Math.acos(2 * Math.random() - 1);
+  const biasX = biasMag * Math.sin(biasPhi) * Math.cos(biasTheta);
+  const biasY = biasMag * Math.sin(biasPhi) * Math.sin(biasTheta);
+  const biasZ = biasMag * Math.cos(biasPhi);
+
+  const speedRange = theme.speedMax - theme.speedMin;
+
   for (let i = 0; i < count; i++) {
     // 球面上に等方分布
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    const speed =
-      theme.speedMin + Math.random() * (theme.speedMax - theme.speedMin);
+    // pow(random, exp) で半径分布を歪める (exp<1=外周密、exp>1=中央密)
+    const r = Math.pow(Math.random(), speedExp);
+    const speed = theme.speedMin + r * speedRange;
 
-    velocities[i * 3 + 0] = speed * Math.sin(phi) * Math.cos(theta);
-    velocities[i * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
-    velocities[i * 3 + 2] = speed * Math.cos(phi);
+    velocities[i * 3 + 0] =
+      speed * Math.sin(phi) * Math.cos(theta) * scaleX + biasX;
+    velocities[i * 3 + 1] =
+      speed * Math.sin(phi) * Math.sin(theta) * scaleY + biasY;
+    velocities[i * 3 + 2] = speed * Math.cos(phi) * scaleZ + biasZ;
 
     positions[i * 3 + 0] = x;
     positions[i * 3 + 1] = y;
