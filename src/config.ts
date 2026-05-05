@@ -40,8 +40,19 @@ export const BLOOM_STRENGTH_HIGH = 0.27;
 export const CHARGE_STEP_MS = 150;
 /** 最大段階。タップ離し時にこの値までで burst スケールが決まる */
 export const CHARGE_MAX_STEPS = 10;
-/** 押下位置から指がこの距離 (px) を越えたらチャージを中断 (Phase C スワイプ用) */
-export const CHARGE_MOVE_CANCEL_PX = 12;
+/**
+ * 押下位置から指がこの距離 (px) を越えたらスワイプ判定の候補にする。
+ * 小さすぎるとタップの微小ドリフトでスワイプ判定されるため、遊びを持たせる。
+ */
+export const CHARGE_MOVE_CANCEL_PX = 28;
+/**
+ * スワイプ確定に必要な瞬間速度 (px/s)。
+ * CHARGE_MOVE_CANCEL_PX を越えても、この速度を満たさなければスワイプには遷移しない。
+ * ゆっくりした手ぶれは無視され、フリック様の動きだけがスワイプとなる。
+ */
+export const SWIPE_TRIGGER_VELOCITY_PX_PER_SEC = 350;
+/** スワイプ確定速度を計算する直近ウィンドウ (ms) */
+export const SWIPE_TRIGGER_VELOCITY_WINDOW_MS = 90;
 
 // ---- Charge aura (押下位置を渦巻く粒子) ----
 /** 同時存在する aura 粒子数 */

@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import {
   CHARGE_MOVE_CANCEL_PX,
+  SWIPE_TRIGGER_VELOCITY_PX_PER_SEC,
+  SWIPE_TRIGGER_VELOCITY_WINDOW_MS,
   SWIPE_VELOCITY_WINDOW_MS,
 } from "./config";
 
@@ -49,6 +51,11 @@ export interface SwipeEvent {
   durationMs: number;
 }
 
+export interface StrokeMoveEvent {
+  target: THREE.Vector3;
+  prevTarget: THREE.Vector3;
+}
+
 export interface PressGestureHandlers {
   /** pointerdown 時に 1 回。AudioContext 初期化などの「最初のジェスチャ」フックに使う */
   onPressStart?(event: PressEvent): void;
@@ -60,6 +67,18 @@ export interface PressGestureHandlers {
   onSwipeStart?(event: SwipeStartEvent): void;
   /** pointerup 時にスワイプ扱いとして呼ばれる */
   onSwipe?(event: SwipeEvent): void;
+  /** 描画モード時 pointerdown */
+  onStrokeStart?(event: PressEvent): void;
+  /** 描画モード時 pointermove */
+  onStrokeMove?(event: StrokeMoveEvent): void;
+  /** 描画モード時 pointerup */
+  onStrokeEnd?(): void;
+  /**
+   * pointerdown 時に評価され、true なら描画モードとして扱う。
+   * 操作中にモードが変わっても進行中のジェスチャは pointerdown 時の判定で完走させる
+   * (途中で切り替わると charge/swipe/stroke の状態が混ざって破綻するため)。
+   */
+  isDrawingMode?(): boolean;
 }
 
 interface Sample {
@@ -73,9 +92,12 @@ interface Sample {
  *
  * 状態遷移:
  *   idle → pressing    on pointerdown
- *   pressing → swiping on pointermove > CHARGE_MOVE_CANCEL_PX
+ *   pressing → swiping on pointermove で「距離 > MOVE_CANCEL_PX かつ 直近速度 > TRIGGER_VELOCITY」
  *   pressing → idle    on pointerup  (→ onPressEnd)
  *   swiping  → idle    on pointerup  (→ onSwipe)
+ *
+ * 距離だけで判定すると押下中の微小ドリフトで誤判定するため、フリック様の
+ * 速度条件を AND で課す。ゆっくり指がずれる動きはタップ扱いのまま続行する。
  *
  * touch-action: none 前提のため preventDefault は不要。
  */
@@ -89,6 +111,9 @@ export function bindPointerGesture(
   let startY = 0;
   let startTime = 0;
   let swiping = false;
+  /** pointerdown 時に isDrawingMode() を評価して固定。操作中の挙動分岐に使う */
+  let drawing = false;
+  let prevStrokeWorld: THREE.Vector3 | null = null;
   let rafId = 0;
   const samples: Sample[] = [];
 
@@ -107,6 +132,8 @@ export function bindPointerGesture(
     }
     activePointerId = null;
     swiping = false;
+    drawing = false;
+    prevStrokeWorld = null;
     samples.length = 0;
   }
 
@@ -129,6 +156,12 @@ export function bindPointerGesture(
     samples.length = 0;
     pushSample(e.clientX, e.clientY, startTime);
     const target = screenToWorld(camera, e.clientX, e.clientY);
+    drawing = handlers.isDrawingMode?.() === true;
+    if (drawing) {
+      prevStrokeWorld = target.clone();
+      handlers.onStrokeStart?.({ clientX: e.clientX, clientY: e.clientY, target });
+      return;
+    }
     handlers.onPressStart?.({ clientX: e.clientX, clientY: e.clientY, target });
     rafId = requestAnimationFrame(tick);
   });
@@ -137,25 +170,46 @@ export function bindPointerGesture(
     if (e.pointerId !== activePointerId) return;
     const t = performance.now();
     pushSample(e.clientX, e.clientY, t);
+    if (drawing) {
+      if (!handlers.onStrokeMove || !prevStrokeWorld) return;
+      const target = screenToWorld(camera, e.clientX, e.clientY);
+      handlers.onStrokeMove({ target, prevTarget: prevStrokeWorld });
+      prevStrokeWorld = target;
+      return;
+    }
     if (swiping) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    if (dx * dx + dy * dy > cancelThresholdSq) {
-      swiping = true;
-      if (rafId !== 0) {
-        cancelAnimationFrame(rafId);
-        rafId = 0;
-      }
-      handlers.onSwipeStart?.({ clientX: e.clientX, clientY: e.clientY });
+    if (dx * dx + dy * dy <= cancelThresholdSq) return;
+    // 距離は越えたが、フリック様の速度がない限り「タップ中の微小移動」と扱う
+    if (recentVelocityPxPerSec(t) < SWIPE_TRIGGER_VELOCITY_PX_PER_SEC) return;
+    swiping = true;
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
     }
+    handlers.onSwipeStart?.({ clientX: e.clientX, clientY: e.clientY });
   });
+
+  /** 直近 SWIPE_TRIGGER_VELOCITY_WINDOW_MS の瞬間速度 (px/s) */
+  function recentVelocityPxPerSec(now: number): number {
+    if (samples.length < 2) return 0;
+    const last = samples[samples.length - 1];
+    const cutoff = now - SWIPE_TRIGGER_VELOCITY_WINDOW_MS;
+    const first = samples.find((s) => s.t >= cutoff) ?? samples[0];
+    const dt = (last.t - first.t) / 1000;
+    if (dt <= 0) return 0;
+    return Math.hypot(last.clientX - first.clientX, last.clientY - first.clientY) / dt;
+  }
 
   function end(e: PointerEvent): void {
     if (e.pointerId !== activePointerId) return;
     const endTime = performance.now();
     pushSample(e.clientX, e.clientY, endTime);
 
-    if (swiping) {
+    if (drawing) {
+      handlers.onStrokeEnd?.();
+    } else if (swiping) {
       fireSwipe(endTime, camera, handlers);
     } else {
       const target = screenToWorld(camera, e.clientX, e.clientY);
