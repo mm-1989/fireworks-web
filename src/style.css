@@ -49,41 +49,6 @@ body {
   z-index: 2;
 }
 
-/* 画面右上の操作モード切替 (花火/描画) */
-.mode-toggle {
-  position: fixed;
-  top: max(8px, env(safe-area-inset-top));
-  right: max(8px, env(safe-area-inset-right));
-  display: flex;
-  gap: 6px;
-  z-index: 6;
-  pointer-events: auto;
-}
-
-.mode-toggle__btn {
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.mode-toggle__btn--active {
-  background: rgba(255, 235, 180, 0.95);
-  color: #1a1a1a;
-  border-color: transparent;
-}
-
 /* 長押しチャージの進捗リング。canvas の上に重ねてタップ位置に追従 */
 .charge-indicator {
   position: fixed;

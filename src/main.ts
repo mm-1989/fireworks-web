@@ -17,18 +17,11 @@ import {
   DRAWING_BRUSH_SIZE,
   DT_MAX,
   MAX_CONCURRENT_BURSTS,
-  SHOOTING_STARS_MAX_CONCURRENT,
-  SWIPE_SPEED_MAX_WORLD,
-  SWIPE_SPEED_MIN_WORLD,
-  SWIPE_STARS_MAX,
-  SWIPE_STARS_PER_PX,
 } from "./config";
 import { mountDebugBadge } from "./debugBadge";
 import { createCrossRayTexture, createGlowTexture } from "./glowTexture";
 import { buildFileName, saveImage } from "./imageExport";
 import { bindPointerGesture } from "./input";
-import { getMode } from "./mode";
-import { mountModeToggle } from "./modeToggle";
 import { detectPerformanceTier } from "./performanceTier";
 import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
@@ -37,12 +30,6 @@ import { createResidueSparkles } from "./residueSparkles";
 import { createSceneContext } from "./scene";
 import { sparkleUniforms } from "./sparkleShader";
 import { registerServiceWorker } from "./serviceWorker";
-import {
-  type ShootingStar,
-  createShootingStar,
-  disposeShootingStar,
-  updateShootingStar,
-} from "./shootingStar";
 import { createThemePicker } from "./themes";
 
 // ---- DOM ----
@@ -81,14 +68,12 @@ const chargeIndicator = createChargeIndicator();
 
 // ---- Game state ----
 const bursts: Burst[] = [];
-const shootingStars: ShootingStar[] = [];
 const clock = new THREE.Clock();
-const accentColor = new THREE.Color();
 let cleared = false;
 let secondsSinceLastCheck = 0;
-/** 押下中だけ存在する aura。onPressStart で生成、onPressEnd/onSwipeStart/onClear で dispose */
+/** 押下中だけ存在する aura。onPressStart で生成、onPressEnd/onStrokeStart/onClear で dispose */
 let chargeAura: ChargeAura | null = null;
-/** 描画モードの 1 ストロークで使い続ける色。onStrokeStart で確定 */
+/** 1 ストロークで使い続ける色。onStrokeStart で確定 */
 const strokeColor = new THREE.Color();
 
 // ---- Main loop ----
@@ -102,12 +87,6 @@ function animate(): void {
   for (let i = bursts.length - 1; i >= 0; i--) {
     if (updateBurst(bursts[i], scene, dt, now, residue.stampBurst)) {
       bursts.splice(i, 1);
-    }
-  }
-
-  for (let i = shootingStars.length - 1; i >= 0; i--) {
-    if (updateShootingStar(shootingStars[i], scene, dt, now, residue.stampPoint)) {
-      shootingStars.splice(i, 1);
     }
   }
 
@@ -137,22 +116,6 @@ function spawnBurst(step: number, x: number, y: number, z: number, now: number):
   const base = themePicker.pickBlend(blendCountForStep(step));
   const theme = applyChargeToTheme(base, step);
   bursts.push(createBurst(scene, theme, x, y, z, now));
-}
-
-/** 流れ星 1 本を生成。上限超過時は最古を破棄 */
-function spawnShootingStar(
-  start: THREE.Vector3,
-  velocity: THREE.Vector3,
-  now: number,
-): void {
-  if (shootingStars.length >= SHOOTING_STARS_MAX_CONCURRENT) {
-    const oldest = shootingStars.shift();
-    if (oldest) disposeShootingStar(oldest, scene);
-  }
-  const color = themePicker.pickAccentColor(accentColor).clone();
-  shootingStars.push(
-    createShootingStar(scene, glowTexture, start, velocity, color, now),
-  );
 }
 
 function maybeCheckClear(dt: number): void {
@@ -190,9 +153,7 @@ function onClear(): void {
 /** ゲーム状態を初期化。クリア演出から「もういちど」で呼ばれる */
 function reset(): void {
   for (const b of bursts) disposeBurst(b, scene);
-  for (const s of shootingStars) disposeShootingStar(s, scene);
   bursts.length = 0;
-  shootingStars.length = 0;
   disposeChargeAura();
   residue.clear();
   cleared = false;
@@ -209,20 +170,16 @@ function disposeChargeAura(): void {
 
 animate();
 
-// ---- Input: firework=タップ→花火/ドラッグ→軌跡、shooting=スワイプ→流れ星 ----
-mountModeToggle();
+// ---- Input: タップ→花火、ドラッグ→軌跡 ----
 bindPointerGesture(sceneCanvas, camera, {
-  getMode,
   onPressStart: ({ clientX, clientY, target }) => {
     if (cleared) return;
     sound.ensureContext();
-    if (getMode() !== "firework") return; // 流れ星モードでは charge を出さない
     chargeIndicator.show(clientX, clientY);
     disposeChargeAura();
     chargeAura = createChargeAura(scene, glowTexture, target);
   },
   onPressUpdate: (holdMs) => {
-    if (getMode() !== "firework") return;
     const step = computeChargeStep(holdMs);
     chargeIndicator.setStep(step);
     chargeAura?.setStep(step);
@@ -231,7 +188,6 @@ bindPointerGesture(sceneCanvas, camera, {
     chargeIndicator.hide();
     disposeChargeAura();
     if (cleared) return;
-    if (getMode() !== "firework") return; // 流れ星モードのタップは無効
     spawnBurst(
       computeChargeStep(holdMs),
       target.x,
@@ -241,35 +197,8 @@ bindPointerGesture(sceneCanvas, camera, {
     );
     sound.playExplosion();
   },
-  onSwipeStart: () => {
-    chargeIndicator.hide();
-    disposeChargeAura();
-  },
-  onSwipe: ({ startTarget, endTarget, direction, worldSpeedPerSec, distancePx }) => {
-    if (cleared) return;
-    const count = Math.max(
-      1,
-      Math.min(SWIPE_STARS_MAX, Math.round(distancePx * SWIPE_STARS_PER_PX)),
-    );
-    const speed = Math.max(
-      SWIPE_SPEED_MIN_WORLD,
-      Math.min(SWIPE_SPEED_MAX_WORLD, worldSpeedPerSec),
-    );
-    const now = clock.elapsedTime;
-    for (let i = 0; i < count; i++) {
-      const t = count === 1 ? 0.5 : i / (count - 1);
-      const start = new THREE.Vector3().lerpVectors(startTarget, endTarget, t);
-      // 進行方向に対して少しだけ直交方向にブレを入れる
-      const jitter = (Math.random() - 0.5) * 2.0;
-      start.x += -direction.y * jitter;
-      start.y += direction.x * jitter;
-      const velocity = direction.clone().multiplyScalar(speed);
-      spawnShootingStar(start, velocity, now);
-    }
-    sound.playExplosion();
-  },
   onStrokeStart: () => {
-    // firework モードで描画に遷移したら charge UI を撤収して色を確定
+    // 描画に遷移したら charge UI を撤収して色を確定
     chargeIndicator.hide();
     disposeChargeAura();
     if (cleared) return;

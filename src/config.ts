@@ -81,26 +81,8 @@ export const RESIDUE_SPARKLE_JITTER_WORLD = 0.8;
 /** 死んだスロットが毎フレーム再生成を試みる確率。低いほど点滅がまばらになる */
 export const RESIDUE_SPARKLE_RESPAWN_CHANCE = 0.12;
 
-// ---- Shooting star (スワイプで出る流れ星) ----
-export const SHOOTING_STAR_HEAD_SIZE = 4.0;
-export const SHOOTING_STAR_TRAIL_SIZE = 2.2;
-export const SHOOTING_STAR_TRAIL_MAX = 20;
-export const SHOOTING_STAR_TRAIL_FADE_PER_SEC = 4.0;
-export const SHOOTING_STAR_LIFETIME = 0.8;
-/** residue に焼き付けるときの world 単位の見かけサイズ */
-export const SHOOTING_STAR_STAMP_WORLD_SIZE = 3.0;
-
-// ---- Swipe (スワイプ → 流れ星) ----
-/** スワイプ距離 (px) から本数に換算するレート。40px ごとに 1 本 */
-export const SWIPE_STARS_PER_PX = 1 / 40;
-/** 1 回のスワイプで出せる最大本数 */
-export const SWIPE_STARS_MAX = 20;
-/** 流れ星の最低/最高速度 (world/s)。速度クランプ用 */
-export const SWIPE_SPEED_MIN_WORLD = 20;
-export const SWIPE_SPEED_MAX_WORLD = 120;
-/** 同時に生存できる流れ星の上限 */
-export const SHOOTING_STARS_MAX_CONCURRENT = 40;
-/** スワイプ速度サンプルを取る期間 (ms)。長すぎると古い動きが混じり、短すぎるとノイジー */
+// ---- Pointermove sample window ----
+/** pointermove サンプルを保持する期間 (ms)。ジェスチャ判定の速度計算に使う */
 export const SWIPE_VELOCITY_WINDOW_MS = 150;
 
 // ---- Drawing mode (自由描画モード) ----

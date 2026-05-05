@@ -34,23 +34,6 @@ export interface PressReleaseEvent extends PressEvent {
   holdMs: number;
 }
 
-export interface SwipeStartEvent {
-  clientX: number;
-  clientY: number;
-}
-
-export interface SwipeEvent {
-  startTarget: THREE.Vector3;
-  endTarget: THREE.Vector3;
-  /** end - start の単位ベクトル (world) */
-  direction: THREE.Vector3;
-  /** スワイプ終盤 SWIPE_VELOCITY_WINDOW_MS の瞬間速度 (world/s) */
-  worldSpeedPerSec: number;
-  /** 始点〜終点の画面距離 (px)。本数換算用 */
-  distancePx: number;
-  durationMs: number;
-}
-
 export interface StrokeMoveEvent {
   target: THREE.Vector3;
   prevTarget: THREE.Vector3;
@@ -61,26 +44,14 @@ export interface PressGestureHandlers {
   onPressStart?(event: PressEvent): void;
   /** requestAnimationFrame で呼ばれる。holdMs はミリ秒 */
   onPressUpdate?(holdMs: number): void;
-  /** pointerup 時に 1 回。スワイプに遷移した場合は呼ばれない */
+  /** pointerup 時に 1 回。描画に遷移した場合は呼ばれない */
   onPressEnd?(event: PressReleaseEvent): void;
-  /** 指が閾値を越えた瞬間に 1 回。charge UI の撤収などに使う */
-  onSwipeStart?(event: SwipeStartEvent): void;
-  /** pointerup 時にスワイプ扱いとして呼ばれる */
-  onSwipe?(event: SwipeEvent): void;
-  /** firework モードで大きな移動が起きたとき (描画開始) */
+  /** 大きな移動が起きた瞬間に 1 回。charge UI の撤収などに使う */
   onStrokeStart?(event: PressEvent): void;
-  /** firework モードで描画中の pointermove */
+  /** 描画中の pointermove */
   onStrokeMove?(event: StrokeMoveEvent): void;
-  /** firework モードで描画状態のまま pointerup */
+  /** 描画状態のまま pointerup */
   onStrokeEnd?(): void;
-  /**
-   * pointerdown 時 + 「大きな移動」検出時に評価される。返値で大きな移動の扱いが決まる:
-   *  - "firework": 描画モード扱い → onStrokeStart/Move/End
-   *  - "shooting": スワイプ扱い → onSwipeStart/onSwipe
-   * pointerdown 後はジェスチャ完走まで pointerdown 時の判定で固定する
-   * (途中で切り替わると charge/swipe/stroke の状態が混ざって破綻するため)。
-   */
-  getMode?(): "firework" | "shooting";
 }
 
 interface Sample {
@@ -90,15 +61,13 @@ interface Sample {
 }
 
 /**
- * canvas 上のプレス/長押し/スワイプを購読する。
+ * canvas 上のプレス/長押し/描画を購読する。
  *
- * 状態遷移 (簡略):
- *   idle → pressing    on pointerdown (両モード共通: onPressStart + charge tick 開始)
- *   pressing → drawing on pointermove で大きな移動 + getMode()==="firework"
- *   pressing → swiping on pointermove で大きな移動 + getMode()==="shooting"
+ * 状態遷移:
+ *   idle → pressing    on pointerdown (onPressStart + charge tick 開始)
+ *   pressing → drawing on pointermove で大きな移動 (→ onStrokeStart)
  *   pressing → idle    on pointerup (→ onPressEnd)
  *   drawing  → idle    on pointerup (→ onStrokeEnd)
- *   swiping  → idle    on pointerup (→ onSwipe)
  *
  * 「大きな移動」= 距離 > MOVE_CANCEL_PX かつ 直近速度 > TRIGGER_VELOCITY。
  * 距離だけで判定すると押下中の微小ドリフトで誤判定するため、フリック様の速度条件を
@@ -115,8 +84,7 @@ export function bindPointerGesture(
   let startX = 0;
   let startY = 0;
   let startTime = 0;
-  let swiping = false;
-  /** firework モードで大きな移動が起きた後に true。pointerup で onStrokeEnd を発火 */
+  /** 大きな移動が起きた後に true。pointerup で onStrokeEnd を発火 */
   let drawing = false;
   let prevStrokeWorld: THREE.Vector3 | null = null;
   let rafId = 0;
@@ -125,7 +93,7 @@ export function bindPointerGesture(
   const cancelThresholdSq = CHARGE_MOVE_CANCEL_PX * CHARGE_MOVE_CANCEL_PX;
 
   function tick(): void {
-    if (activePointerId == null || swiping) return;
+    if (activePointerId == null || drawing) return;
     handlers.onPressUpdate?.(performance.now() - startTime);
     rafId = requestAnimationFrame(tick);
   }
@@ -136,7 +104,6 @@ export function bindPointerGesture(
       rafId = 0;
     }
     activePointerId = null;
-    swiping = false;
     drawing = false;
     prevStrokeWorld = null;
     samples.length = 0;
@@ -157,7 +124,6 @@ export function bindPointerGesture(
     startX = e.clientX;
     startY = e.clientY;
     startTime = performance.now();
-    swiping = false;
     drawing = false;
     samples.length = 0;
     pushSample(e.clientX, e.clientY, startTime);
@@ -177,7 +143,6 @@ export function bindPointerGesture(
       prevStrokeWorld = target;
       return;
     }
-    if (swiping) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (dx * dx + dy * dy <= cancelThresholdSq) return;
@@ -187,16 +152,10 @@ export function bindPointerGesture(
       cancelAnimationFrame(rafId);
       rafId = 0;
     }
-    const mode = handlers.getMode?.() ?? "firework";
-    if (mode === "firework") {
-      drawing = true;
-      const target = screenToWorld(camera, e.clientX, e.clientY);
-      prevStrokeWorld = target.clone();
-      handlers.onStrokeStart?.({ clientX: e.clientX, clientY: e.clientY, target });
-    } else {
-      swiping = true;
-      handlers.onSwipeStart?.({ clientX: e.clientX, clientY: e.clientY });
-    }
+    drawing = true;
+    const target = screenToWorld(camera, e.clientX, e.clientY);
+    prevStrokeWorld = target.clone();
+    handlers.onStrokeStart?.({ clientX: e.clientX, clientY: e.clientY, target });
   });
 
   /** 直近 SWIPE_TRIGGER_VELOCITY_WINDOW_MS の瞬間速度 (px/s) */
@@ -217,8 +176,6 @@ export function bindPointerGesture(
 
     if (drawing) {
       handlers.onStrokeEnd?.();
-    } else if (swiping) {
-      fireSwipe(endTime, camera, handlers);
     } else {
       const target = screenToWorld(camera, e.clientX, e.clientY);
       handlers.onPressEnd?.({
@@ -234,43 +191,6 @@ export function bindPointerGesture(
   function cancel(e: PointerEvent): void {
     if (e.pointerId !== activePointerId) return;
     finish();
-  }
-
-  function fireSwipe(
-    endTime: number,
-    cam: THREE.PerspectiveCamera,
-    h: PressGestureHandlers,
-  ): void {
-    if (!h.onSwipe) return;
-    const first = samples[0];
-    const last = samples[samples.length - 1];
-    const startTarget = screenToWorld(cam, first.clientX, first.clientY);
-    const endTarget = screenToWorld(cam, last.clientX, last.clientY);
-    const distancePx = Math.hypot(
-      last.clientX - first.clientX,
-      last.clientY - first.clientY,
-    );
-    const durationMs = endTime - startTime;
-
-    // 直近ウィンドウでの瞬間速度 (world/s)
-    const windowFirst =
-      samples.find((s) => endTime - s.t <= SWIPE_VELOCITY_WINDOW_MS) ?? first;
-    const winStart = screenToWorld(cam, windowFirst.clientX, windowFirst.clientY);
-    const winDt = Math.max(0.001, (last.t - windowFirst.t) / 1000);
-    const worldSpeedPerSec = winStart.distanceTo(endTarget) / winDt;
-
-    const direction = new THREE.Vector3()
-      .subVectors(endTarget, startTarget)
-      .normalize();
-
-    h.onSwipe({
-      startTarget,
-      endTarget,
-      direction,
-      worldSpeedPerSec,
-      distancePx,
-      durationMs,
-    });
   }
 
   window.addEventListener("pointerup", end);
