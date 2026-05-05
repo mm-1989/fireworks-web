@@ -81,7 +81,18 @@ export function createResidueSparkles(
     map: texture,
     vertexColors: true,
     transparent: true,
-    blending: THREE.AdditiveBlending,
+    // RGB は AdditiveBlending と同じ src.a*src + dst だが、alpha は max(src, dst)。
+    // 通常の AdditiveBlending は alpha も加算され、密に重なると framebuffer alpha が
+    // 1 に飽和する。すると 2D residue canvas に source-over 合成したとき、WebGL 側の
+    // RGB が低い (sparkle のフェード端など) ピクセルが「黒い穴」として軌跡に乗る。
+    // alpha を max で取れば重ねても飽和せず、最も明るい sparkle の透明度に追従する。
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneFactor,
+    blendEquationAlpha: THREE.MaxEquation,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneFactor,
     depthWrite: false,
   });
   applySparklePatch(material);
