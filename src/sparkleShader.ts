@@ -151,3 +151,27 @@ export function createSeedAttribute(count: number): THREE.BufferAttribute {
   for (let i = 0; i < count; i++) seeds[i] = Math.random();
   return new THREE.BufferAttribute(seeds, 1);
 }
+
+/**
+ * 2D residue 上に重ねる粒子向けの加算合成。framebuffer の alpha を一切書き換えず、
+ * RGB に対してのみ src.a*src を加算する。
+ *
+ * なぜ alpha を 0 に保つ必要があるのか:
+ *  - WebGL canvas は premultipliedAlpha=true で初期化されている
+ *  - browser の合成は premultiplied source-over: out = canvas.rgb + (1-canvas.a)*residue
+ *  - 通常の AdditiveBlending では canvas.a が密な重なりで 1 に飽和する
+ *  - alpha=1 の場所は (1-1)*residue = 0 となり residue を canvas.rgb で塗り潰す
+ *  - canvas.rgb が低いとその場所が「黒い穴」として現れる (典型: sparkle の dim 群)
+ *  - alpha=0 を維持すれば常に out = canvas.rgb + residue で「純粋な加算合成」になる
+ */
+export function applyAdditiveOverResidueBlending(
+  material: THREE.PointsMaterial,
+): void {
+  material.blending = THREE.CustomBlending;
+  material.blendEquation = THREE.AddEquation;
+  material.blendSrc = THREE.SrcAlphaFactor;
+  material.blendDst = THREE.OneFactor;
+  material.blendEquationAlpha = THREE.AddEquation;
+  material.blendSrcAlpha = THREE.ZeroFactor;
+  material.blendDstAlpha = THREE.OneFactor;
+}

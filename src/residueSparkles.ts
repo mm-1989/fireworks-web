@@ -10,7 +10,11 @@ import {
   RESIDUE_SPARKLE_SAMPLE_SIZE,
   RESIDUE_SPARKLE_SIZE,
 } from "./config";
-import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
+import {
+  applyAdditiveOverResidueBlending,
+  applySparklePatch,
+  createSeedAttribute,
+} from "./sparkleShader";
 
 /**
  * 焼き付け背景 (residue canvas) を常時キラキラさせる overlay。
@@ -81,20 +85,10 @@ export function createResidueSparkles(
     map: texture,
     vertexColors: true,
     transparent: true,
-    // RGB は AdditiveBlending と同じ src.a*src + dst だが、alpha は max(src, dst)。
-    // 通常の AdditiveBlending は alpha も加算され、密に重なると framebuffer alpha が
-    // 1 に飽和する。すると 2D residue canvas に source-over 合成したとき、WebGL 側の
-    // RGB が低い (sparkle のフェード端など) ピクセルが「黒い穴」として軌跡に乗る。
-    // alpha を max で取れば重ねても飽和せず、最も明るい sparkle の透明度に追従する。
-    blending: THREE.CustomBlending,
-    blendEquation: THREE.AddEquation,
-    blendSrc: THREE.SrcAlphaFactor,
-    blendDst: THREE.OneFactor,
-    blendEquationAlpha: THREE.MaxEquation,
-    blendSrcAlpha: THREE.OneFactor,
-    blendDstAlpha: THREE.OneFactor,
     depthWrite: false,
   });
+  // residue の上に重ねる粒子は alpha を 0 に固定して合成。詳細は helper のコメント参照。
+  applyAdditiveOverResidueBlending(material);
   applySparklePatch(material);
 
   const points = new THREE.Points(geometry, material);

@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { RESIDUE_CROSS_MAX, RESIDUE_CROSS_SIZE } from "./config";
-import { applySparklePatch, createSeedAttribute } from "./sparkleShader";
+import {
+  applyAdditiveOverResidueBlending,
+  applySparklePatch,
+  createSeedAttribute,
+} from "./sparkleShader";
 
 /**
  * 焼き付けと同時に spawn する「長寿命の十字 ray 粒子」層。
@@ -53,13 +57,14 @@ export function createResidueCrosses(
     map: crossTexture,
     vertexColors: true,
     transparent: true,
-    blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
   // 長寿命で画面に留まる粒子なので、短寿命 default より拡縮を強めにして
   // 「呼吸している」感をはっきり出す。0.3 → 0.7..1.3 (60%)。
   // alphaFollowsBrightness=false: ray-only texture の arm が brightness clamp で
   // 消えないよう、map の α をそのまま通す。
+  // alpha=0 加算合成で residue を絶対に塗り潰さない (黒飛び防止)。
+  applyAdditiveOverResidueBlending(material);
   applySparklePatch(material, {
     alphaFollowsBrightness: false,
     scalePulseAmp: 0.3,
