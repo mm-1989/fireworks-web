@@ -209,18 +209,20 @@ function disposeChargeAura(): void {
 
 animate();
 
-// ---- Input: 花火モード = タップ/長押し/スワイプ、描画モード = ドラッグで軌跡 ----
+// ---- Input: firework=タップ→花火/ドラッグ→軌跡、shooting=スワイプ→流れ星 ----
 mountModeToggle();
 bindPointerGesture(sceneCanvas, camera, {
-  isDrawingMode: () => getMode() === "drawing",
+  getMode,
   onPressStart: ({ clientX, clientY, target }) => {
     if (cleared) return;
     sound.ensureContext();
+    if (getMode() !== "firework") return; // 流れ星モードでは charge を出さない
     chargeIndicator.show(clientX, clientY);
     disposeChargeAura();
     chargeAura = createChargeAura(scene, glowTexture, target);
   },
   onPressUpdate: (holdMs) => {
+    if (getMode() !== "firework") return;
     const step = computeChargeStep(holdMs);
     chargeIndicator.setStep(step);
     chargeAura?.setStep(step);
@@ -229,6 +231,7 @@ bindPointerGesture(sceneCanvas, camera, {
     chargeIndicator.hide();
     disposeChargeAura();
     if (cleared) return;
+    if (getMode() !== "firework") return; // 流れ星モードのタップは無効
     spawnBurst(
       computeChargeStep(holdMs),
       target.x,
@@ -266,8 +269,10 @@ bindPointerGesture(sceneCanvas, camera, {
     sound.playExplosion();
   },
   onStrokeStart: () => {
+    // firework モードで描画に遷移したら charge UI を撤収して色を確定
+    chargeIndicator.hide();
+    disposeChargeAura();
     if (cleared) return;
-    sound.ensureContext();
     themePicker.pickAccentColor(strokeColor);
   },
   onStrokeMove: ({ target, prevTarget }) => {

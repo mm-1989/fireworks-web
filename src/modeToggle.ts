@@ -9,14 +9,14 @@ export function mountModeToggle(): void {
   wrap.className = "mode-toggle";
 
   const fwBtn = makeBtn("花火", "firework");
-  const drawBtn = makeBtn("描画", "drawing");
+  const shootBtn = makeBtn("流れ星", "shooting");
   wrap.appendChild(fwBtn);
-  wrap.appendChild(drawBtn);
+  wrap.appendChild(shootBtn);
   document.body.appendChild(wrap);
 
   function refresh(m: Mode): void {
     fwBtn.classList.toggle("mode-toggle__btn--active", m === "firework");
-    drawBtn.classList.toggle("mode-toggle__btn--active", m === "drawing");
+    shootBtn.classList.toggle("mode-toggle__btn--active", m === "shooting");
   }
   refresh(getMode());
   onModeChange(refresh);

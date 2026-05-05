@@ -1,8 +1,9 @@
 /**
- * 操作モード。"firework" は従来のタップ→花火/スワイプ→流れ星、
- * "drawing" は指の軌跡を残留レイヤに直接描く。
+ * 操作モード。
+ *  - "firework": タップ→花火、ドラッグ→軌跡を residue に描画
+ *  - "shooting": スワイプ→流れ星 (タップは無効、charge UI も出さない)
  */
-export type Mode = "firework" | "drawing";
+export type Mode = "firework" | "shooting";
 
 let current: Mode = "firework";
 const listeners = new Set<(m: Mode) => void>();

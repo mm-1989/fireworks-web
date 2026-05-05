@@ -67,18 +67,20 @@ export interface PressGestureHandlers {
   onSwipeStart?(event: SwipeStartEvent): void;
   /** pointerup 時にスワイプ扱いとして呼ばれる */
   onSwipe?(event: SwipeEvent): void;
-  /** 描画モード時 pointerdown */
+  /** firework モードで大きな移動が起きたとき (描画開始) */
   onStrokeStart?(event: PressEvent): void;
-  /** 描画モード時 pointermove */
+  /** firework モードで描画中の pointermove */
   onStrokeMove?(event: StrokeMoveEvent): void;
-  /** 描画モード時 pointerup */
+  /** firework モードで描画状態のまま pointerup */
   onStrokeEnd?(): void;
   /**
-   * pointerdown 時に評価され、true なら描画モードとして扱う。
-   * 操作中にモードが変わっても進行中のジェスチャは pointerdown 時の判定で完走させる
+   * pointerdown 時 + 「大きな移動」検出時に評価される。返値で大きな移動の扱いが決まる:
+   *  - "firework": 描画モード扱い → onStrokeStart/Move/End
+   *  - "shooting": スワイプ扱い → onSwipeStart/onSwipe
+   * pointerdown 後はジェスチャ完走まで pointerdown 時の判定で固定する
    * (途中で切り替わると charge/swipe/stroke の状態が混ざって破綻するため)。
    */
-  isDrawingMode?(): boolean;
+  getMode?(): "firework" | "shooting";
 }
 
 interface Sample {
@@ -90,14 +92,17 @@ interface Sample {
 /**
  * canvas 上のプレス/長押し/スワイプを購読する。
  *
- * 状態遷移:
- *   idle → pressing    on pointerdown
- *   pressing → swiping on pointermove で「距離 > MOVE_CANCEL_PX かつ 直近速度 > TRIGGER_VELOCITY」
- *   pressing → idle    on pointerup  (→ onPressEnd)
- *   swiping  → idle    on pointerup  (→ onSwipe)
+ * 状態遷移 (簡略):
+ *   idle → pressing    on pointerdown (両モード共通: onPressStart + charge tick 開始)
+ *   pressing → drawing on pointermove で大きな移動 + getMode()==="firework"
+ *   pressing → swiping on pointermove で大きな移動 + getMode()==="shooting"
+ *   pressing → idle    on pointerup (→ onPressEnd)
+ *   drawing  → idle    on pointerup (→ onStrokeEnd)
+ *   swiping  → idle    on pointerup (→ onSwipe)
  *
- * 距離だけで判定すると押下中の微小ドリフトで誤判定するため、フリック様の
- * 速度条件を AND で課す。ゆっくり指がずれる動きはタップ扱いのまま続行する。
+ * 「大きな移動」= 距離 > MOVE_CANCEL_PX かつ 直近速度 > TRIGGER_VELOCITY。
+ * 距離だけで判定すると押下中の微小ドリフトで誤判定するため、フリック様の速度条件を
+ * AND で課す。ゆっくり指がずれる動きはタップ扱いのまま続行する。
  *
  * touch-action: none 前提のため preventDefault は不要。
  */
@@ -111,7 +116,7 @@ export function bindPointerGesture(
   let startY = 0;
   let startTime = 0;
   let swiping = false;
-  /** pointerdown 時に isDrawingMode() を評価して固定。操作中の挙動分岐に使う */
+  /** firework モードで大きな移動が起きた後に true。pointerup で onStrokeEnd を発火 */
   let drawing = false;
   let prevStrokeWorld: THREE.Vector3 | null = null;
   let rafId = 0;
@@ -153,15 +158,10 @@ export function bindPointerGesture(
     startY = e.clientY;
     startTime = performance.now();
     swiping = false;
+    drawing = false;
     samples.length = 0;
     pushSample(e.clientX, e.clientY, startTime);
     const target = screenToWorld(camera, e.clientX, e.clientY);
-    drawing = handlers.isDrawingMode?.() === true;
-    if (drawing) {
-      prevStrokeWorld = target.clone();
-      handlers.onStrokeStart?.({ clientX: e.clientX, clientY: e.clientY, target });
-      return;
-    }
     handlers.onPressStart?.({ clientX: e.clientX, clientY: e.clientY, target });
     rafId = requestAnimationFrame(tick);
   });
@@ -183,12 +183,20 @@ export function bindPointerGesture(
     if (dx * dx + dy * dy <= cancelThresholdSq) return;
     // 距離は越えたが、フリック様の速度がない限り「タップ中の微小移動」と扱う
     if (recentVelocityPxPerSec(t) < SWIPE_TRIGGER_VELOCITY_PX_PER_SEC) return;
-    swiping = true;
     if (rafId !== 0) {
       cancelAnimationFrame(rafId);
       rafId = 0;
     }
-    handlers.onSwipeStart?.({ clientX: e.clientX, clientY: e.clientY });
+    const mode = handlers.getMode?.() ?? "firework";
+    if (mode === "firework") {
+      drawing = true;
+      const target = screenToWorld(camera, e.clientX, e.clientY);
+      prevStrokeWorld = target.clone();
+      handlers.onStrokeStart?.({ clientX: e.clientX, clientY: e.clientY, target });
+    } else {
+      swiping = true;
+      handlers.onSwipeStart?.({ clientX: e.clientX, clientY: e.clientY });
+    }
   });
 
   /** 直近 SWIPE_TRIGGER_VELOCITY_WINDOW_MS の瞬間速度 (px/s) */
