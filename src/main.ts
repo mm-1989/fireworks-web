@@ -13,6 +13,8 @@ import { showClearCeremony } from "./clearCeremony";
 import {
   CLEAR_CHECK_INTERVAL_SEC,
   CLEAR_FILL_THRESHOLD,
+  DRAWING_ALPHA_SCALE,
+  DRAWING_BRUSH_SIZE,
   DT_MAX,
   MAX_CONCURRENT_BURSTS,
   SHOOTING_STARS_MAX_CONCURRENT,
@@ -25,6 +27,8 @@ import { mountDebugBadge } from "./debugBadge";
 import { createCrossRayTexture, createGlowTexture } from "./glowTexture";
 import { buildFileName, saveImage } from "./imageExport";
 import { bindPointerGesture } from "./input";
+import { getMode } from "./mode";
+import { mountModeToggle } from "./modeToggle";
 import { detectPerformanceTier } from "./performanceTier";
 import { createPostFx } from "./postFx";
 import { createResidueLayer } from "./residue";
@@ -84,6 +88,8 @@ let cleared = false;
 let secondsSinceLastCheck = 0;
 /** 押下中だけ存在する aura。onPressStart で生成、onPressEnd/onSwipeStart/onClear で dispose */
 let chargeAura: ChargeAura | null = null;
+/** 描画モードの 1 ストロークで使い続ける色。onStrokeStart で確定 */
+const strokeColor = new THREE.Color();
 
 // ---- Main loop ----
 function animate(): void {
@@ -203,8 +209,10 @@ function disposeChargeAura(): void {
 
 animate();
 
-// ---- Input: タップ = 最小 burst、長押し = 10 段階チャージで拡大 + 混色 ----
+// ---- Input: 花火モード = タップ/長押し/スワイプ、描画モード = ドラッグで軌跡 ----
+mountModeToggle();
 bindPointerGesture(sceneCanvas, camera, {
+  isDrawingMode: () => getMode() === "drawing",
   onPressStart: ({ clientX, clientY, target }) => {
     if (cleared) return;
     sound.ensureContext();
@@ -256,6 +264,21 @@ bindPointerGesture(sceneCanvas, camera, {
       spawnShootingStar(start, velocity, now);
     }
     sound.playExplosion();
+  },
+  onStrokeStart: () => {
+    if (cleared) return;
+    sound.ensureContext();
+    themePicker.pickAccentColor(strokeColor);
+  },
+  onStrokeMove: ({ target, prevTarget }) => {
+    if (cleared) return;
+    residue.stampTrail(
+      prevTarget,
+      target,
+      strokeColor,
+      DRAWING_BRUSH_SIZE,
+      DRAWING_ALPHA_SCALE,
+    );
   },
 });
 

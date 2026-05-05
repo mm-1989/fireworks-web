@@ -103,6 +103,15 @@ export const SHOOTING_STARS_MAX_CONCURRENT = 40;
 /** スワイプ速度サンプルを取る期間 (ms)。長すぎると古い動きが混じり、短すぎるとノイジー */
 export const SWIPE_VELOCITY_WINDOW_MS = 150;
 
+// ---- Drawing mode (自由描画モード) ----
+/** ブラシ粒子の world サイズ。stampTrail に渡す */
+export const DRAWING_BRUSH_SIZE = 2.6;
+/**
+ * 1 stamp あたりの不透明度倍率 (RESIDUE_ALPHA に乗算)。
+ * 移動中は連続して stamp が走るので低めにして自然な濃度に。
+ */
+export const DRAWING_ALPHA_SCALE = 0.35;
+
 // ---- Burst variation (バーストごとに乱数を引く形状ばらつき) ----
 /**
  * 球面分布の異方性。各軸が独立に [1-AMP, 1+AMP] 倍される。

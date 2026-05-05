@@ -36,6 +36,18 @@ export interface ResidueLayer {
     color: THREE.Color,
     particleSize: number,
   ): void;
+  /**
+   * 2 点間を補間しながら焼き付ける。描画モードで pointermove ごとに呼ぶと
+   * 高速移動でもなめらかな線になる。`particleSize` は world 単位。
+   * `alphaScale` で 1 stamp あたりの濃度を弱められる (重ね塗りで濃くなりすぎないように)。
+   */
+  stampTrail(
+    prevWorld: THREE.Vector3,
+    currWorld: THREE.Vector3,
+    color: THREE.Color,
+    particleSize: number,
+    alphaScale?: number,
+  ): void;
   /** 埋まり率 0..1。mask 指定時は mask 内のみ対象 */
   computeFillRate(): number;
   /** マスク canvas を設定。null で全画面。マスクの alpha>128 を対象領域とする */
@@ -164,6 +176,37 @@ export function createResidueLayer(
     crosses?.addAt(worldPos, color);
   }
 
+  function stampTrail(
+    prevWorld: THREE.Vector3,
+    currWorld: THREE.Vector3,
+    color: THREE.Color,
+    particleSize: number,
+    alphaScale = 1,
+  ): void {
+    const a = projectToCanvas(prevWorld);
+    const b = projectToCanvas(currWorld);
+    if (!a || !b) return;
+    const radius =
+      computeVisualRadiusPx(particleSize, camera, canvas.height) *
+      RESIDUE_RADIUS_SCALE;
+    const r = Math.round(color.r * 255);
+    const g = Math.round(color.g * 255);
+    const bl = Math.round(color.b * 255);
+    const rgb = `${r},${g},${bl}`;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    // stamp 半径の 0.5 倍ステップで補間。これより粗いと点線に見える
+    const step = Math.max(1, radius * 0.5);
+    const steps = Math.max(1, Math.ceil(dist / step));
+    ctx.globalAlpha = RESIDUE_ALPHA * alphaScale;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      drawGlow(a.x + dx * t, a.y + dy * t, radius, rgb);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function computeFillRate(): number {
     sampleCtx.clearRect(0, 0, CLEAR_SAMPLE_SIZE, CLEAR_SAMPLE_SIZE);
     sampleCtx.drawImage(canvas, 0, 0, CLEAR_SAMPLE_SIZE, CLEAR_SAMPLE_SIZE);
@@ -235,6 +278,7 @@ export function createResidueLayer(
   return {
     stampBurst,
     stampPoint,
+    stampTrail,
     computeFillRate,
     setMask,
     clear,
