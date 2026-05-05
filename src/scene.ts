@@ -48,7 +48,8 @@ export function createSceneContext(canvas: HTMLCanvasElement): SceneContext {
   // チャージ全開で粒子が大量に重なると ACES でも圧縮しきれず白飛びするため、
   // 露出を控えめに落として飽和余地を広げる。粒子側明度 (themes HSL L) を下げた分
   // 露出は少し戻して単粒子の見栄えを保つ。
-  renderer.toneMappingExposure = 0.7;
+  // 0.7 → 0.55 に下げて密集時の白飛びを緩和。単粒子はやや暗くなるが視認可能範囲。
+  renderer.toneMappingExposure = 0.55;
   applyViewportSize(renderer);
 
   const resizeListeners: Array<(w: number, h: number) => void> = [];

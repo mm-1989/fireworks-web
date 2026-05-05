@@ -155,8 +155,11 @@ export const RESIDUE_CROSS_SIZE = 10.0;
 export const RESIDUE_CROSS_BURST_SUB_SAMPLE = 10;
 
 // ---- Residue (焼き付け背景) ----
-/** 1 粒子当たりの焼き付け不透明度。同じ場所に重ねるほど濃くなる */
-export const RESIDUE_ALPHA = 0.5;
+/**
+ * 1 粒子当たりの焼き付け不透明度。同じ場所に重ねるほど濃くなる。
+ * 0.5 → 0.4 に下げて重なり時の飽和速度を緩和 (白飛び対策)。
+ */
+export const RESIDUE_ALPHA = 0.4;
 /** 視覚サイズに対する stamp 半径の倍率。1.0 = 画面上で粒子が見えている領域と同じ */
 export const RESIDUE_RADIUS_SCALE = 1.0;
 /** burst の寿命比率がこの値を跨いだ瞬間に residue へ焼き付ける */
